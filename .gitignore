@@ -4,7 +4,8 @@ dist/
 
 # Secrets & session — NE JAMAIS committer
 .env
+*-state.json
 fb-state.json
-*.fb-state.json
-.fb-session/
+wa-state.json
+li-state.json
 screenshots/

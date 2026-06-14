@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
-import { FacebookConnector } from "./FacebookConnector.js";
-import { FacebookConnectorError } from "./errors.js";
+import { SocialConnector } from "./SocialConnector.js";
+import { SocialConnectorError } from "./errors.js";
+import { PROVIDERS } from "./providers/index.js";
+import type { ProviderId } from "./types.js";
 
 /**
- * CLI minimale. La connexion est TOUJOURS manuelle (Facebook bloque le login
- * automatise) : une fenetre s'ouvre, tu te connectes a la main, la session est
- * sauvegardee puis reutilisee.
+ * CLI multi-provider. Connexion TOUJOURS manuelle (fenetre visible).
  *
- *   facebook-connector login                 # ouvre la fenetre, connexion manuelle
- *   facebook-connector post "Mon message"    # publie sur le mur (session requise)
- *   facebook-connector status                # dit si une session valide existe
+ *   social-connector login   --provider facebook
+ *   social-connector login   --provider whatsapp           # scan QR
+ *   social-connector post    --provider facebook "Hello mur"
+ *   social-connector post    --provider whatsapp --to 33612345678 "Salut"
+ *   social-connector status  --provider linkedin
  */
 
-// Charge .env si present (Node >= 20.6).
 function loadEnv(): void {
   if (existsSync(".env") && typeof process.loadEnvFile === "function") {
     try {
@@ -29,21 +30,56 @@ function bool(v: string | undefined, def: boolean): boolean {
   return v === "1" || v.toLowerCase() === "true";
 }
 
-function makeConnector(forceHeaded = false): FacebookConnector {
-  return new FacebookConnector({
-    statePath: process.env.FB_STATE_PATH ?? "./fb-state.json",
-    headless: forceHeaded ? false : bool(process.env.FB_HEADLESS, false),
+/** Extrait --flag/-f valeurs et renvoie {flags, positionals}. */
+function parseArgs(argv: string[]): {
+  provider?: string;
+  to?: string;
+  screenshot?: string;
+  positionals: string[];
+} {
+  const out: { provider?: string; to?: string; screenshot?: string; positionals: string[] } = {
+    positionals: [],
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--provider" || a === "-p") out.provider = argv[++i];
+    else if (a === "--to" || a === "-t") out.to = argv[++i];
+    else if (a === "--screenshot") out.screenshot = argv[++i];
+    else out.positionals.push(a!);
+  }
+  return out;
+}
+
+function resolveProvider(flag?: string): ProviderId {
+  const id = flag ?? process.env.PROVIDER;
+  if (!id) {
+    throw new SocialConnectorError(
+      `Provider requis : --provider <${Object.keys(PROVIDERS).join("|")}>`,
+    );
+  }
+  if (!(id in PROVIDERS)) {
+    throw new SocialConnectorError(
+      `Provider inconnu "${id}". Disponibles: ${Object.keys(PROVIDERS).join(", ")}.`,
+    );
+  }
+  return id as ProviderId;
+}
+
+function makeConnector(provider: ProviderId, forceHeaded = false): SocialConnector {
+  return new SocialConnector(provider, {
+    statePath: process.env.STATE_PATH,
+    headless: forceHeaded ? false : bool(process.env.HEADLESS, false),
   });
 }
 
 async function main(): Promise<void> {
   loadEnv();
   const [cmd, ...rest] = process.argv.slice(2);
+  const args = parseArgs(rest);
 
   switch (cmd) {
     case "login": {
-      // Login manuel -> fenetre visible forcee.
-      const fb = makeConnector(true);
+      const fb = makeConnector(resolveProvider(args.provider), true);
       try {
         await fb.login();
         console.log("[OK] Connecte. Session sauvegardee.");
@@ -54,21 +90,22 @@ async function main(): Promise<void> {
     }
 
     case "post": {
-      const text = rest.join(" ").trim();
+      const provider = resolveProvider(args.provider);
+      const text = args.positionals.join(" ").trim();
       if (!text) {
-        console.error('Usage: facebook-connector post "ton message"');
+        console.error('Usage: post --provider <id> [--to <num>] "ton message"');
         process.exit(1);
       }
-      const fb = makeConnector();
+      const fb = makeConnector(provider);
       try {
         if (!(await fb.isLoggedIn())) {
           console.error(
-            "[ERREUR] Pas de session valide. Lance d'abord:  npm run login",
+            `[ERREUR] Pas de session ${provider}. Lance d'abord:  login --provider ${provider}`,
           );
           process.exit(1);
         }
-        await fb.postToWall(text);
-        console.log("[OK] Publie sur le mur.");
+        await fb.post(text, { target: args.to, screenshotPath: args.screenshot });
+        console.log("[OK] Message publie/envoye.");
       } finally {
         await fb.close();
       }
@@ -76,7 +113,7 @@ async function main(): Promise<void> {
     }
 
     case "status": {
-      const fb = makeConnector();
+      const fb = makeConnector(resolveProvider(args.provider));
       try {
         const ok = await fb.isLoggedIn();
         console.log(ok ? "[OK] Session valide." : "[--] Pas de session valide.");
@@ -89,14 +126,16 @@ async function main(): Promise<void> {
     default:
       console.log(
         [
-          "facebook-connector — publie sur ton mur Facebook.",
+          "social-connector — publie/envoie sur plusieurs reseaux (login manuel).",
+          "",
+          `Providers: ${Object.keys(PROVIDERS).join(", ")}`,
           "",
           "Commandes:",
-          "  login                  Ouvre une fenetre, tu te connectes a la main, sauve la session",
-          '  post "message"         Publie un message sur le mur (session requise)',
-          "  status                 Indique si une session valide existe",
+          "  login  --provider <id>                 Ouvre une fenetre, connexion manuelle, sauve la session",
+          '  post   --provider <id> [--to <num>] "msg"   Publie (FB/LinkedIn) ou envoie (WhatsApp --to)',
+          "  status --provider <id>                 Indique si une session valide existe",
           "",
-          "Config (.env): FB_STATE_PATH, FB_HEADLESS (0=visible, 1=headless)",
+          "Config (.env): STATE_PATH, HEADLESS (0=visible, 1=headless), PROVIDER (defaut)",
         ].join("\n"),
       );
       if (cmd && cmd !== "help") process.exit(1);
@@ -104,7 +143,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  if (err instanceof FacebookConnectorError) {
+  if (err instanceof SocialConnectorError) {
     console.error(`[ERREUR] ${err.name}: ${err.message}`);
   } else {
     console.error(err);

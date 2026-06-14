@@ -63,3 +63,17 @@ export async function anyVisible(
 ): Promise<boolean> {
   return (await firstVisible(page, selectors, timeoutMs)) !== null;
 }
+
+/** Attend que plus aucun des selecteurs ne soit visible (ex: modale fermee). */
+export async function waitGone(
+  page: Page,
+  selectors: readonly string[],
+  timeoutMs = 20000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await anyVisible(page, selectors, 600))) return true;
+    await page.waitForTimeout(400);
+  }
+  return false;
+}

@@ -1,7 +1,7 @@
 {
-  "name": "facebook-connector",
-  "version": "0.1.0",
-  "description": "Librairie TypeScript pour se connecter a Facebook et publier sur son mur via un navigateur automatise (Playwright).",
+  "name": "social-connector",
+  "version": "0.2.0",
+  "description": "Librairie TypeScript multi-provider (Facebook, WhatsApp, LinkedIn) : login manuel via navigateur automatise (Playwright), session reutilisee, publication/envoi de messages.",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -13,7 +13,7 @@
     }
   },
   "bin": {
-    "facebook-connector": "dist/cli.js"
+    "social-connector": "dist/cli.js"
   },
   "files": [
     "dist"
@@ -21,14 +21,19 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
-    "login": "tsx src/cli.ts login",
-    "post": "tsx src/cli.ts post",
-    "check:selectors": "tsx scripts/check-login-selectors.ts",
+    "login": "tsx src/cli.ts login --provider",
+    "post": "tsx src/cli.ts post --provider",
+    "status": "tsx src/cli.ts status --provider",
+    "login:fb": "tsx src/cli.ts login --provider facebook",
+    "login:wa": "tsx src/cli.ts login --provider whatsapp",
+    "login:li": "tsx src/cli.ts login --provider linkedin",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
     "facebook",
+    "whatsapp",
+    "linkedin",
     "playwright",
     "automation",
     "typescript"

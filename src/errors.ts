@@ -1,23 +1,26 @@
 /**
  * Erreurs typees de la librairie. Permet au consommateur de distinguer
- * un probleme d'auth, un checkpoint Facebook, un selecteur casse, etc.
+ * un probleme d'auth, un checkpoint, un selecteur casse, etc.
  */
 
-export class FacebookConnectorError extends Error {
+export class SocialConnectorError extends Error {
   constructor(message: string) {
     super(message);
     this.name = new.target.name;
   }
 }
 
-/** Session invalide / expiree et impossible de se reconnecter automatiquement. */
-export class NotLoggedInError extends FacebookConnectorError {}
+/** Session invalide / expiree et pas de reconnexion possible. */
+export class NotLoggedInError extends SocialConnectorError {}
 
-/** Facebook demande une verification (captcha, 2FA, validation d'appareil). */
-export class CheckpointError extends FacebookConnectorError {}
+/** Le provider demande une verification (captcha, 2FA, QR non scanne...). */
+export class CheckpointError extends SocialConnectorError {}
 
-/** Un selecteur attendu est introuvable — l'UI Facebook a probablement change. */
-export class SelectorError extends FacebookConnectorError {}
+/** Un selecteur attendu est introuvable — l'UI du provider a probablement change. */
+export class SelectorError extends SocialConnectorError {}
 
-/** La publication n'a pas pu etre confirmee. */
-export class PostFailedError extends FacebookConnectorError {}
+/** La publication / l'envoi n'a pas pu etre confirme. */
+export class PostFailedError extends SocialConnectorError {}
+
+/** Provider inconnu / non supporte. */
+export class UnknownProviderError extends SocialConnectorError {}

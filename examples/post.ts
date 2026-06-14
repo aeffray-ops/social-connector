@@ -1,22 +1,23 @@
 /**
- * Exemple d'utilisation programmatique.
- * Lance avec :  npx tsx examples/post.ts "Mon message"
+ * Exemple multi-provider.
+ *   npx tsx examples/post.ts facebook "Hello mur"
+ *   npx tsx examples/post.ts linkedin "Hello feed"
+ *   npx tsx examples/post.ts whatsapp "Salut" 33612345678
  *
- * La connexion est manuelle : si aucune session valide n'existe, une fenetre
- * s'ouvre et tu te connectes a la main. La session est ensuite reutilisee.
+ * Connexion manuelle : si pas de session valide, une fenetre s'ouvre et tu te
+ * connectes a la main (ou scan QR pour WhatsApp). La session est reutilisee.
  */
-import { FacebookConnector } from "../src/index.js";
+import { SocialConnector, type ProviderId } from "../src/index.js";
 
-const message = process.argv.slice(2).join(" ") || "Hello depuis facebook-connector !";
+const [providerArg, message, target] = process.argv.slice(2);
+const provider = (providerArg ?? "facebook") as ProviderId;
 
-const fb = new FacebookConnector({ statePath: "./fb-state.json", headless: false });
+const fb = new SocialConnector(provider, { headless: false });
 
 try {
-  // login() : ne fait rien si la session est valide, sinon attend la
-  // connexion manuelle dans la fenetre.
   await fb.login();
-  await fb.postToWall(message);
-  console.log("Publie:", message);
+  await fb.post(message ?? "Hello depuis social-connector !", { target });
+  console.log(`Publie sur ${provider}.`);
 } finally {
   await fb.close();
 }
