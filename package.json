@@ -1,0 +1,47 @@
+{
+  "name": "facebook-connector",
+  "version": "0.1.0",
+  "description": "Librairie TypeScript pour se connecter a Facebook et publier sur son mur via un navigateur automatise (Playwright).",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "facebook-connector": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "login": "tsx src/cli.ts login",
+    "post": "tsx src/cli.ts post",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "facebook",
+    "playwright",
+    "automation",
+    "typescript"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

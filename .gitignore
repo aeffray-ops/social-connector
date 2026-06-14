@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+
+# Secrets & session — NE JAMAIS committer
+.env
+fb-state.json
+*.fb-state.json
+.fb-session/
+screenshots/
