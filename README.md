@@ -1,59 +1,65 @@
-# facebook-connector
+# social-connector
 
-Librairie TypeScript pour se connecter à un compte Facebook et **publier un message sur son propre mur**, via un navigateur automatisé ([Playwright](https://playwright.dev)).
+Librairie TypeScript **multi-provider** (Facebook, WhatsApp, LinkedIn) pour publier/envoyer un message via un navigateur automatisé ([Playwright](https://playwright.dev)).
 
-La connexion est **manuelle** (Facebook bloque le login automatisé) : une fenêtre s'ouvre, tu te connectes toi-même **une seule fois**, puis la session (cookies) est sauvegardée sur disque et réutilisée — plus besoin de te reconnecter ni de repasser les vérifications de sécurité ensuite.
+Même principe pour tous les providers : la connexion est **manuelle** (ils bloquent le login automatisé). Une fenêtre s'ouvre, tu te connectes toi-même **une seule fois** (ou scan du QR pour WhatsApp), puis la session (cookies) est sauvegardée **par provider** et réutilisée.
 
-> ⚠️ **À lire avant d'utiliser**
-> Automatiser Facebook **viole les Conditions d'utilisation de Meta**. Risques réels : déclenchement de captcha/2FA, blocage temporaire ou bannissement du compte. À n'utiliser que sur **ton propre compte**, à tes risques. Cette lib ne contourne aucune vérification : tout checkpoint t'est rendu pour résolution manuelle.
+| Provider | Action `post()` | `target` requis |
+|---|---|---|
+| `facebook` | Publie sur le mur | non |
+| `linkedin` | Publie sur le feed | non |
+| `whatsapp` | Envoie un message à un contact | **oui** (numéro international) |
+
+> ⚠️ Automatiser ces plateformes **viole leurs Conditions d'utilisation**. Risque : captcha/2FA, blocage, bannissement. À n'utiliser que sur **tes propres comptes**, à tes risques. Aucune vérification n'est contournée.
 
 ## Installation
 
 ```bash
 npm install
-npx playwright install chromium   # télécharge le navigateur
+npx playwright install chromium
 ```
-
-## Configuration
-
-Copie `.env.example` en `.env` (optionnel — aucun identifiant n'y figure) :
-
-```ini
-FB_STATE_PATH=./fb-state.json   # optionnel
-FB_HEADLESS=0                   # 0 = navigateur visible, 1 = headless
-```
-
-`.env` et `fb-state.json` sont git-ignorés.
 
 ## Utilisation — CLI
 
 ```bash
-# 1) Connexion MANUELLE (une fois). Une fenêtre Chromium s'ouvre :
-#    tu te connectes toi-même (email + mot de passe + 2FA si demandé).
-#    Dès que tu es loggé, la session est sauvegardée.
-npm run login
+# 1) Connexion MANUELLE (une fois par provider). Fenêtre forcée visible.
+npm run login:fb          # Facebook  (= login --provider facebook)
+npm run login:wa          # WhatsApp  (scan du QR)
+npm run login:li          # LinkedIn
 
-# 2) Publier sur le mur (réutilise la session)
-npm run post -- "Mon premier message automatisé"
+# 2) Publier / envoyer (réutilise la session)
+npm run post -- facebook "Hello mon mur"
+npm run post -- linkedin "Hello mon feed"
+npm run post -- whatsapp --to 33612345678 "Salut !"
 
-# Vérifier l'état de la session
-npx tsx src/cli.ts status
+# État de session
+npm run status -- facebook
 ```
+
+> `npm run post -- <provider> ...` passe `--provider <provider>` à la CLI.
+> Forme directe : `npx tsx src/cli.ts post --provider whatsapp --to 33612345678 "Salut"`.
 
 ## Utilisation — API
 
 ```typescript
-import { FacebookConnector } from "facebook-connector";
+import { SocialConnector } from "social-connector";
 
-const fb = new FacebookConnector({ statePath: "./fb-state.json" });
-
+// Facebook (mur)
+const fb = new SocialConnector("facebook");
 try {
-  // Réutilise la session sauvée si valide, sinon ouvre la fenêtre
-  // et attend que tu te connectes à la main.
-  await fb.login();
-  await fb.postToWall("Hello world 👋");
+  await fb.login();                       // manuel si pas de session
+  await fb.post("Hello world 👋");
 } finally {
   await fb.close();
+}
+
+// WhatsApp (message à un contact)
+const wa = new SocialConnector("whatsapp");
+try {
+  await wa.login();                       // scan du QR
+  await wa.post("Salut !", { target: "33612345678" });
+} finally {
+  await wa.close();
 }
 ```
 
@@ -61,37 +67,43 @@ try {
 
 | Méthode | Description |
 |---|---|
-| `new FacebookConnector(opts?)` | `statePath`, `headless`, `slowMo`, `locale`, `verbose` (logs de progression, défaut `true`) |
-| `login(opts?)` | Connexion **manuelle**. Réutilise la session si valide, sinon ouvre la fenêtre et attend. `opts.timeoutMs`. |
-| `isLoggedIn()` | `true` si une session sauvée est valide. |
-| `postToWall(text, opts?)` | Publie `text` sur le mur. `opts.screenshotPath` pour debug. |
-| `close()` | Ferme le navigateur. |
+| `new SocialConnector(providerId, opts?)` | `providerId`: `facebook`\|`whatsapp`\|`linkedin`. `opts`: `statePath`, `headless`, `slowMo`, `locale`, `verbose` |
+| `login(opts?)` | Connexion **manuelle**. Réutilise la session si valide. `opts.timeoutMs` |
+| `isLoggedIn()` | `true` si une session sauvée est valide |
+| `post(content, options?)` | Publie/envoie. `options.target` (WhatsApp), `options.screenshotPath` |
+| `close()` | Ferme le navigateur |
 
 ### Erreurs typées
 
-`NotLoggedInError`, `CheckpointError`, `SelectorError`, `PostFailedError` — toutes dérivent de `FacebookConnectorError`.
+`NotLoggedInError`, `CheckpointError`, `SelectorError`, `PostFailedError`, `UnknownProviderError` — dérivent de `SocialConnectorError`.
 
 ## Architecture
 
 ```
-FacebookConnector (façade)
-├── BrowserSession   → cycle de vie Playwright + persistance storageState
-├── AuthManager      → détection session + attente du login manuel
-└── WallPoster       → ouvre le composer, tape le texte, publie
-selectors.ts         → tous les sélecteurs DOM (POINT FRAGILE — à patcher si l'UI change)
-dom.ts               → helpers tolérants (essaie plusieurs sélecteurs candidats)
+SocialConnector (façade, choisit le provider)
+├── BrowserSession   → cycle de vie Playwright + persistance storageState (par provider)
+├── AuthManager      → détection session + attente du login manuel (piloté par ProviderAuthConfig)
+└── provider.post()  → action propre au provider
+providers/
+  facebook.ts        → mur    | whatsapp.ts → message contact | linkedin.ts → feed
+  index.ts           → registre { facebook, whatsapp, linkedin }
+types.ts             → SocialProvider, ProviderAuthConfig, PostOptions, PostContext
+dom.ts               → helpers tolérants (firstVisible parcourt TOUS les matches)
 ```
+
+### Ajouter un provider
+
+Créer `src/providers/<nom>.ts` exportant un `SocialProvider` (`auth` + `post`), puis l'enregistrer dans `src/providers/index.ts`. Rien d'autre à toucher.
 
 ## Limites & maintenance
 
-- **Sélecteurs fragiles** : Facebook change son DOM souvent. Si une action casse → `SelectorError` avec la liste des sélecteurs essayés. Corrige `src/selectors.ts`.
-- **Localisation** : les `aria-label` dépendent de la langue du compte. Les sélecteurs couvrent FR + EN ; ajoute ta langue au besoin.
-- **Pas de contournement** : captcha/2FA restent manuels (par design).
+- **Sélecteurs fragiles** : chaque provider change son DOM. Un `SelectorError` liste les sélecteurs essayés → patche le fichier du provider concerné.
+- **Non vérifiés sans login réel** : sélecteurs `post` de WhatsApp/LinkedIn et markers logged-out de LinkedIn. À ajuster au premier vrai login.
+- **WhatsApp** : `target` = numéro international sans `+` ni espaces (ex `33612345678`).
 
 ## Scripts
 
 ```bash
 npm run build       # compile TS -> dist/
-npm run typecheck   # vérifie les types sans émettre
-npm run dev         # lance la CLI via tsx
+npm run typecheck   # types sans émettre
 ```
