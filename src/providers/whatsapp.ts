@@ -2,7 +2,7 @@ import type { Page } from "playwright";
 import { firstVisible, requireVisible, waitGone } from "../dom.js";
 import { PostFailedError, SelectorError } from "../errors.js";
 import type { Logger } from "../logger.js";
-import type { SocialProvider } from "../types.js";
+import type { ConversationMessage, SocialProvider } from "../types.js";
 
 /**
  * WhatsApp Web — sends a message to a contact, a group, or a community's
@@ -64,6 +64,38 @@ const GROUPS_TAB = [
 
 /** CSS for the chat-row title (the chat name), excluding message previews. */
 const CHAT_TITLE = '#pane-side div[data-testid="cell-frame-title"] span[title]';
+
+/** Message rows in the open conversation (WhatsApp Web obfuscates classes). */
+const MESSAGE_ROW = '#main div[role="row"]';
+/**
+ * The `.copyable-text` element carrying `data-pre-plain-text="[HH:MM,
+ * DD/MM/YYYY] Sender: "` — its attribute gives time + date + sender, and its
+ * innerText is the message body.
+ */
+const MESSAGE_META = "[data-pre-plain-text]";
+
+/** Parses "[20:15, 14/06/2026] Jean: " -> {time, date, sender}. */
+function parsePrePlainText(pre: string | null): { time?: string; date?: string; sender?: string } {
+  if (!pre) return {};
+  const m = pre.match(/\[\s*([^,\]]+)\s*,\s*([^\]]+)\]\s*(.*?):\s*$/);
+  if (!m) return {};
+  return { time: m[1]?.trim(), date: m[2]?.trim(), sender: m[3]?.trim() };
+}
+
+/** True if `date` (dd/mm/yyyy or mm/dd/yyyy) is on/after the YYYY-MM-DD bound. */
+function dateOnOrAfter(date: string, sinceIso: string): boolean {
+  const parts = date.split(/[/.-]/).map((p) => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return true; // unparseable -> keep
+  let [a, b, y] = parts as [number, number, number];
+  // Disambiguate day/month: if the first field > 12 it must be the day.
+  const day = a > 12 ? a : b;
+  const month = a > 12 ? b : a;
+  if (y < 100) y += 2000;
+  const msgTime = new Date(y, month - 1, day).getTime();
+  const since = new Date(sinceIso).getTime();
+  if (Number.isNaN(msgTime) || Number.isNaN(since)) return true;
+  return msgTime >= since;
+}
 
 /** Opens a contact's chat via the phone deep-link. */
 async function openByPhone(page: Page, phone: string, log: Logger): Promise<void> {
@@ -210,5 +242,55 @@ export const whatsapp: SocialProvider = {
     const list = [...names];
     log.info(`Found ${list.length} group(s).`);
     return limit ? list.slice(0, limit) : list;
+  },
+
+  async readConversation({ page, options, log }) {
+    const chat = options.chat?.trim();
+    if (!chat) throw new PostFailedError("WhatsApp: read_conversation requires a chat name.");
+    const limit = options.limit ?? 50;
+
+    await openByName(page, chat, log);
+    log.step("Waiting for the conversation...");
+    await requireVisible(page, ["#main"], "WhatsApp conversation pane", 30000);
+    await page.waitForTimeout(1000);
+
+    // Scroll up a few times to load enough recent bubbles (cap on scrolls
+    // keeps us from walking the whole history — `limit` is the real bound).
+    log.step(`Collecting up to ${limit} message(s)...`);
+    for (let i = 0; i < 8; i++) {
+      if ((await page.locator(MESSAGE_ROW).count()) >= limit) break;
+      await page
+        .locator("#main")
+        .evaluate((el) => {
+          const scroller = el.querySelector('div[tabindex="0"], div.copyable-area') ?? el;
+          scroller.scrollTop = 0;
+        })
+        .catch(() => {});
+      await page.waitForTimeout(700);
+    }
+
+    const rows = page.locator(MESSAGE_ROW);
+    const n = await rows.count();
+    const out: ConversationMessage[] = [];
+    for (let i = 0; i < n; i++) {
+      const row = rows.nth(i);
+      const meta = row.locator(MESSAGE_META).first();
+      if ((await meta.count()) === 0) continue; // date dividers / system rows
+      const pre = await meta.getAttribute("data-pre-plain-text").catch(() => null);
+      const text = (await meta.innerText().catch(() => "")).trim();
+      if (!text) continue;
+      const { time, date, sender } = parsePrePlainText(pre);
+      // data-id is "true_..." for outgoing, "false_..." for incoming.
+      const dataId = (await row.getAttribute("data-id").catch(() => "")) ?? "";
+      const from = dataId.startsWith("true") ? "me" : sender ?? "?";
+      out.push({ from, text, time, date });
+    }
+
+    // Best-effort date filter; `limit` is the hard cap (keep the most recent).
+    const filtered = options.since
+      ? out.filter((m) => !m.date || dateOnOrAfter(m.date, options.since!))
+      : out;
+    log.info(`Collected ${filtered.length} message(s).`);
+    return filtered.slice(-limit);
   },
 };

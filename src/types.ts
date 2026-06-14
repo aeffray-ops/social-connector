@@ -65,6 +65,38 @@ export interface ReadOptions {
   limit?: number;
 }
 
+/** One scraped message from a WhatsApp conversation. */
+export interface ConversationMessage {
+  /** Sender name, or "me" for the logged-in user. */
+  from: string;
+  /** Message text. */
+  text: string;
+  /** Time as shown in the UI (e.g. "20:15"), if found. */
+  time?: string;
+  /** Date as shown in the bubble metadata (e.g. "14/06/2026"), if found. */
+  date?: string;
+}
+
+export interface ReadConversationOptions {
+  /** Chat/group/community name to open (by search). Required. */
+  chat: string;
+  /** Max number of recent messages to return. Default: 50. */
+  limit?: number;
+  /**
+   * Best-effort lower bound on the message date (YYYY-MM-DD). Messages older
+   * than this are dropped when their date can be parsed; unparseable dates are
+   * kept. The hard cap is always `limit`.
+   */
+  since?: string;
+}
+
+/** Context passed to a provider's readConversation() action. */
+export interface ReadConversationContext {
+  page: Page;
+  options: ReadConversationOptions;
+  log: Logger;
+}
+
 /** Context passed to a provider's readPosts() action. */
 export interface ReadContext {
   page: Page;
@@ -93,4 +125,8 @@ export interface SocialProvider {
    * `options.limit` (0/undefined = all).
    */
   listGroups?(ctx: ReadContext): Promise<string[]>;
+  /**
+   * Reads recent messages of one conversation. Optional: WhatsApp only.
+   */
+  readConversation?(ctx: ReadConversationContext): Promise<ConversationMessage[]>;
 }

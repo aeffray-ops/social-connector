@@ -46,6 +46,7 @@ interface Args {
   show?: boolean;
   help?: boolean;
   limit?: number;
+  since?: string;
   json?: boolean;
   yes?: boolean;
   positionals: string[];
@@ -61,6 +62,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--chat" || a === "-c") out.chat = argv[++i];
     else if (a === "--screenshot") out.screenshot = argv[++i];
     else if (a === "--limit" || a === "-n") out.limit = Number(argv[++i]);
+    else if (a === "--since") out.since = argv[++i];
     else if (a === "--json") out.json = true;
     else if (a === "--yes" || a === "-y") out.yes = true;
     else if (a === "--show" || a === "--headed" || a === "-s") out.show = true;
@@ -138,6 +140,7 @@ function generalHelp(): string {
     '  post    [provider] [--to <num>] "msg"  Post (Facebook/LinkedIn) or send (WhatsApp, needs --to)',
     "  read    [provider] [--limit N]         Read your own posts (Facebook, LinkedIn)",
     "  groups  [provider] [--limit N]         List your groups (WhatsApp)",
+    '  conversation --chat "name" [--limit N]  Read a WhatsApp conversation\'s recent messages',
     '  ai      "instruction"                  Natural-language WhatsApp via LLM (OpenAI or Anthropic key)',
     "  status  [provider]                     Print whether a valid session exists",
     "  help                                   Show this help",
@@ -146,8 +149,9 @@ function generalHelp(): string {
     "  -p, --provider <id>   Provider (else first arg, else PROVIDER env)",
     "  -t, --to <num>        WhatsApp contact: international number, no '+' (e.g. 33612345678)",
     '  -c, --chat <name>     WhatsApp group/community by name (overrides --to)',
-    "  -n, --limit <N>       read: max posts to fetch (default 10)",
-    "      --json            read: print posts as JSON instead of text",
+    "  -n, --limit <N>       read/groups/conversation: max items to fetch",
+    "      --since <date>    conversation: keep messages on/after YYYY-MM-DD (best-effort)",
+    "      --json            read/groups/conversation: print as JSON instead of text",
     "  -y, --yes             ai: skip the confirmation prompt before sending",
     "  -s, --show, --headed  Show Chromium for this run (default: hidden). login is always visible.",
     "      --screenshot <p>  Save a screenshot before sending (debug)",
@@ -221,6 +225,17 @@ function commandHelp(cmd: string): string {
         `Examples:`,
         `  ${BIN} groups whatsapp`,
         `  ${BIN} groups whatsapp --json`,
+      ].join("\n");
+    case "conversation":
+      return [
+        `Usage: ${BIN} conversation --chat "name" [--limit N] [--since YYYY-MM-DD] [--json]`,
+        "",
+        "Read the recent messages of one WhatsApp conversation (group or contact),",
+        "by exact chat name. `--limit` caps how many messages (default 50);",
+        "`--since` keeps messages on/after a date (best-effort).",
+        "",
+        `Example:`,
+        `  ${BIN} conversation --chat "IDEAL CRM / OUTILS" --limit 30`,
       ].join("\n");
     case "ai":
       return [
@@ -342,6 +357,24 @@ async function main(): Promise<void> {
         if (args.json) console.log(JSON.stringify(groups, null, 2));
         else if (groups.length === 0) console.log("No groups found.");
         else groups.forEach((g, i) => console.log(`${i + 1}. ${g}`));
+      } finally {
+        await fb.close();
+      }
+      break;
+    }
+
+    case "conversation": {
+      const chat = args.chat ?? args.positionals.join(" ").trim();
+      if (!chat) {
+        console.error(`Usage: ${BIN} conversation --chat "name" [--limit N] [--since YYYY-MM-DD]`);
+        process.exit(1);
+      }
+      const fb = makeConnector("whatsapp", { show: args.show });
+      try {
+        const msgs = await fb.readConversation({ chat, limit: args.limit, since: args.since });
+        if (args.json) console.log(JSON.stringify(msgs, null, 2));
+        else if (msgs.length === 0) console.log("No messages found.");
+        else msgs.forEach((m) => console.log(`[${m.time ?? "?"}] ${m.from}: ${m.text}`));
       } finally {
         await fb.close();
       }

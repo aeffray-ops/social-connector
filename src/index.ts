@@ -11,6 +11,9 @@ export type {
   Post,
   ReadOptions,
   ReadContext,
+  ConversationMessage,
+  ReadConversationOptions,
+  ReadConversationContext,
 } from "./types.js";
 export type { Logger } from "./logger.js";
 export {

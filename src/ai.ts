@@ -22,10 +22,11 @@ const OPENAI_MODEL_DEFAULT = "gpt-4o";
 
 const SYSTEM = [
   "You drive a WhatsApp account on the user's behalf.",
-  "Resolve fuzzy group references to an exact name with list_whatsapp_groups before sending.",
+  "Resolve fuzzy group references to an exact name with list_whatsapp_groups before sending or reading.",
+  "To summarize or answer about a conversation, use read_conversation on that exact chat; for 'today', filter the returned `date` fields yourself. You cannot read all conversations at once — only one chat at a time.",
   "Compose clear, natural messages in the user's language from their intent — never send the raw instruction verbatim.",
   "Provide either `chat` (group/community) or `to` (contact number) to send_whatsapp_message, never both.",
-  "If the destination is ambiguous (several plausible groups, or none match), do not send — ask the user to clarify instead.",
+  "If the destination is ambiguous (several plausible chats, or none match), do not send — ask the user to clarify instead.",
 ].join(" ");
 
 /** Provider-neutral tool definitions (JSON Schema), mapped per backend below. */
@@ -35,6 +36,21 @@ const TOOL_DEFS: { name: string; description: string; schema: Record<string, unk
     description:
       "List the user's WhatsApp groups. Returns {count, groups}: use `count` as the authoritative total (do not recount the array yourself) and `groups` to resolve a fuzzy reference to an exact group name before sending.",
     schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "read_conversation",
+    description:
+      "Read the recent messages of ONE WhatsApp conversation (group or contact), by exact chat name. Returns messages with {from, text, time, date}. To summarize 'today', read with a reasonable limit and filter by the `date` field yourself. There is no way to read all conversations at once.",
+    schema: {
+      type: "object",
+      properties: {
+        chat: { type: "string", description: "Exact chat/group name to read." },
+        limit: { type: "number", description: "Max recent messages to fetch (default 50)." },
+        since: { type: "string", description: "Optional lower-bound date YYYY-MM-DD (best-effort)." },
+      },
+      required: ["chat"],
+      additionalProperties: false,
+    },
   },
   {
     name: "send_whatsapp_message",
@@ -92,7 +108,7 @@ interface ToolOutcome {
 /** Runs one tool call (shared across backends), gating the send behind confirmation. */
 async function execTool(
   name: string,
-  input: { chat?: string; to?: string; message?: string },
+  input: { chat?: string; to?: string; message?: string; limit?: number; since?: string },
   wa: SocialConnector,
   autoSend: boolean,
   confirm: (q: string) => Promise<boolean>,
@@ -102,6 +118,16 @@ async function execTool(
     // Return the count explicitly — LLMs miscount long lists, so don't make
     // the model recount; `count` is the authoritative total.
     return { content: JSON.stringify({ count: groups.length, groups }) };
+  }
+
+  if (name === "read_conversation") {
+    if (!input.chat?.trim()) return { content: "Missing chat name.", isError: true };
+    const messages = await wa.readConversation({
+      chat: input.chat.trim(),
+      limit: input.limit,
+      since: input.since,
+    });
+    return { content: JSON.stringify({ count: messages.length, messages }) };
   }
 
   if (name === "send_whatsapp_message") {
@@ -173,7 +199,7 @@ async function runAnthropic(opts: Required<Pick<RunAiOptions, "connector" | "ins
       if (block.type !== "tool_use") continue;
       const out = await execTool(
         block.name,
-        block.input as { chat?: string; to?: string; message?: string },
+        block.input as { chat?: string; to?: string; message?: string; limit?: number; since?: string },
         opts.connector,
         opts.autoSend,
         opts.confirm,
@@ -227,7 +253,7 @@ async function runOpenAI(opts: Required<Pick<RunAiOptions, "connector" | "instru
 
     for (const call of calls) {
       if (call.type !== "function") continue;
-      let input: { chat?: string; to?: string; message?: string } = {};
+      let input: { chat?: string; to?: string; message?: string; limit?: number; since?: string } = {};
       try {
         input = JSON.parse(call.function.arguments || "{}");
       } catch {

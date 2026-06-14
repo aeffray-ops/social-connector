@@ -4,9 +4,11 @@ import { createLogger } from "./logger.js";
 import { getProvider } from "./providers/index.js";
 import { NotLoggedInError, UnsupportedActionError } from "./errors.js";
 import type {
+  ConversationMessage,
   Post,
   PostOptions,
   ProviderId,
+  ReadConversationOptions,
   ReadOptions,
   SocialProvider,
 } from "./types.js";
@@ -143,6 +145,29 @@ export class SocialConnector {
       );
     }
     return this.provider.listGroups({
+      page: this.session.page,
+      options,
+      log: this.session.logger,
+    });
+  }
+
+  /**
+   * Reads recent messages of one conversation (WhatsApp).
+   * Throws UnsupportedActionError for providers without conversations.
+   */
+  async readConversation(options: ReadConversationOptions): Promise<ConversationMessage[]> {
+    await this.start();
+    if (!(await this.auth.isLoggedIn())) {
+      throw new NotLoggedInError(
+        `No valid session for ${this.provider.label}. Run login() first.`,
+      );
+    }
+    if (!this.provider.readConversation) {
+      throw new UnsupportedActionError(
+        `${this.provider.label} does not support reading conversations.`,
+      );
+    }
+    return this.provider.readConversation({
       page: this.session.page,
       options,
       log: this.session.logger,
