@@ -120,7 +120,18 @@ async function openByPhone(page: Page, phone: string, log: Logger): Promise<void
 /** Opens a group/community/chat by searching the chat list for its name. */
 async function openByName(page: Page, name: string, log: Logger): Promise<void> {
   log.step(`Searching for chat "${name}"...`);
-  await page.goto("https://web.whatsapp.com/", { waitUntil: "domcontentloaded" });
+  // Reuse the already-loaded WhatsApp tab: the left pane (search + list)
+  // persists when switching chats, so only do a full reload if it's absent.
+  // This turns ~10s/chat (reload + hydrate) into ~1-2s (search + click) when
+  // opening several chats in one session.
+  const onList = await page
+    .locator("#pane-side")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  if (!onList) {
+    await page.goto("https://web.whatsapp.com/", { waitUntil: "domcontentloaded" });
+  }
 
   const search = await requireVisible(page, SEARCH_BOX, "WhatsApp search box", 35000);
   await search.click();
