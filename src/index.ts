@@ -14,6 +14,9 @@ export type {
   ConversationMessage,
   ReadConversationOptions,
   ReadConversationContext,
+  RecentChat,
+  ListRecentChatsOptions,
+  ListRecentChatsContext,
 } from "./types.js";
 export type { Logger } from "./logger.js";
 export {

@@ -2,7 +2,7 @@ import type { Page } from "playwright";
 import { firstVisible, requireVisible, waitGone } from "../dom.js";
 import { PostFailedError, SelectorError } from "../errors.js";
 import type { Logger } from "../logger.js";
-import type { ConversationMessage, SocialProvider } from "../types.js";
+import type { ConversationMessage, RecentChat, SocialProvider } from "../types.js";
 
 /**
  * WhatsApp Web — sends a message to a contact, a group, or a community's
@@ -64,6 +64,13 @@ const GROUPS_TAB = [
 
 /** CSS for the chat-row title (the chat name), excluding message previews. */
 const CHAT_TITLE = '#pane-side div[data-testid="cell-frame-title"] span[title]';
+
+const UNREAD_TAB = [
+  'button[role="tab"]:has-text("Non lus")',
+  'button[role="tab"]:has-text("Unread")',
+  '[role="tab"]:has-text("Non lus")',
+  '[role="tab"]:has-text("Unread")',
+];
 
 /** Message rows in the open conversation (WhatsApp Web obfuscates classes). */
 const MESSAGE_ROW = '#main div[role="row"]';
@@ -292,5 +299,77 @@ export const whatsapp: SocialProvider = {
       : out;
     log.info(`Collected ${filtered.length} message(s).`);
     return filtered.slice(-limit);
+  },
+
+  async listRecentChats({ page, options, log }) {
+    const limit = options.limit ?? 20;
+    log.step("Opening WhatsApp...");
+    await page.goto("https://web.whatsapp.com/", { waitUntil: "domcontentloaded" });
+    await requireVisible(page, CHAT_LIST, "WhatsApp chat list", 35000);
+
+    if (options.onlyUnread) {
+      log.step("Filtering to unread...");
+      const tab = await firstVisible(page, UNREAD_TAB, 8000);
+      if (tab) await tab.click().catch(() => {});
+      else log.info("Unread filter not found — listing all recent chats.");
+      await page.waitForTimeout(1200);
+    }
+
+    log.step(`Collecting up to ${limit} recent chat(s)...`);
+    const byName = new Map<string, RecentChat>();
+    let stale = 0;
+    while (byName.size < limit && stale < 6) {
+      const before = byName.size;
+      const batch = await page
+        .locator('#pane-side div[role="row"]')
+        .evaluateAll((rows) =>
+          rows
+            .map((r) => {
+              const name =
+                r
+                  .querySelector('[data-testid="cell-frame-title"] span[title]')
+                  ?.getAttribute("title") ?? "";
+              const time =
+                r.querySelector('[data-testid="cell-frame-primary-detail"]')?.textContent?.trim() ??
+                "";
+              const preview = (
+                r.querySelector('[data-testid="cell-frame-secondary"]')?.textContent ?? ""
+              )
+                // Drop icon pseudo-text leaking into textContent (status ticks,
+                // voice-note icon, etc.): "wds-ic-read", "ic-keyboard-voice-filled".
+                .replace(/(wds-)?ic-[\w-]+/g, "")
+                .trim();
+              const badge = r.querySelector(
+                '[aria-label*="non lu"], [aria-label*="Non lu"], [aria-label*="unread"]',
+              );
+              let unread = 0;
+              if (badge) {
+                const m = (badge.getAttribute("aria-label") ?? badge.textContent ?? "").match(/\d+/);
+                if (m) unread = parseInt(m[0], 10);
+              }
+              return { name, time, preview, unread };
+            })
+            .filter((c) => c.name),
+        )
+        .catch(() => [] as RecentChat[]);
+
+      for (const c of batch) {
+        if (!byName.has(c.name)) byName.set(c.name, c);
+        if (byName.size >= limit) break;
+      }
+
+      if (byName.size >= limit) break;
+      if (byName.size === before) stale++;
+      else stale = 0;
+      await page
+        .locator("#pane-side")
+        .evaluate((el) => el.scrollBy(0, Math.round(el.clientHeight * 0.85)))
+        .catch(() => {});
+      await page.waitForTimeout(600);
+    }
+
+    const list = [...byName.values()].slice(0, limit);
+    log.info(`Found ${list.length} recent chat(s).`);
+    return list;
   },
 };

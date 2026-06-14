@@ -105,6 +105,32 @@ export interface ReadConversationContext {
   log: Logger;
 }
 
+/** A row in the WhatsApp chat list (recency-sorted, newest first). */
+export interface RecentChat {
+  /** Chat/group/contact name. */
+  name: string;
+  /** Last-activity time/date as shown in the list (e.g. "16:45", "hier", "13/06/2026"). */
+  time?: string;
+  /** One-line preview of the last message. */
+  preview?: string;
+  /** Unread message count, 0 if none. */
+  unread?: number;
+}
+
+export interface ListRecentChatsOptions {
+  /** Max chats to return. Default: 20. */
+  limit?: number;
+  /** Restrict to chats with unread messages (uses the in-app Unread filter). */
+  onlyUnread?: boolean;
+}
+
+/** Context passed to a provider's listRecentChats() action. */
+export interface ListRecentChatsContext {
+  page: Page;
+  options: ListRecentChatsOptions;
+  log: Logger;
+}
+
 /** Context passed to a provider's readPosts() action. */
 export interface ReadContext {
   page: Page;
@@ -137,4 +163,9 @@ export interface SocialProvider {
    * Reads recent messages of one conversation. Optional: WhatsApp only.
    */
   readConversation?(ctx: ReadConversationContext): Promise<ConversationMessage[]>;
+  /**
+   * Lists the most recent chats (name + last time + preview + unread).
+   * Optional: WhatsApp only.
+   */
+  listRecentChats?(ctx: ListRecentChatsContext): Promise<RecentChat[]>;
 }

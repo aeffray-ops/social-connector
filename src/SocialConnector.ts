@@ -6,11 +6,13 @@ import { cacheEnabled, isFresh, readCache, writeCache } from "./cache.js";
 import { NotLoggedInError, UnsupportedActionError } from "./errors.js";
 import type {
   ConversationMessage,
+  ListRecentChatsOptions,
   Post,
   PostOptions,
   ProviderId,
   ReadConversationOptions,
   ReadOptions,
+  RecentChat,
   SocialProvider,
 } from "./types.js";
 
@@ -186,6 +188,29 @@ export class SocialConnector {
     // Write-through: merge into the encrypted cache (no-op if disabled).
     await writeCache(options.chat, messages, new Date().toISOString()).catch(() => {});
     return messages;
+  }
+
+  /**
+   * Lists the most recent chats (WhatsApp): name + last time + preview + unread.
+   * Throws UnsupportedActionError for other providers.
+   */
+  async listRecentChats(options: ListRecentChatsOptions = {}): Promise<RecentChat[]> {
+    await this.start();
+    if (!(await this.auth.isLoggedIn())) {
+      throw new NotLoggedInError(
+        `No valid session for ${this.provider.label}. Run login() first.`,
+      );
+    }
+    if (!this.provider.listRecentChats) {
+      throw new UnsupportedActionError(
+        `${this.provider.label} does not support listing recent chats.`,
+      );
+    }
+    return this.provider.listRecentChats({
+      page: this.session.page,
+      options,
+      log: this.session.logger,
+    });
   }
 
   /** Closes the browser. */

@@ -23,7 +23,8 @@ const OPENAI_MODEL_DEFAULT = "gpt-4o";
 const SYSTEM = [
   "You drive a WhatsApp account on the user's behalf.",
   "Resolve fuzzy group references to an exact name with list_whatsapp_groups before sending or reading.",
-  "To summarize or answer about a conversation, use read_conversation on that exact chat; for 'today', filter the returned `date` fields yourself. You cannot read all conversations at once — only one chat at a time.",
+  "For one conversation, use read_conversation on that exact chat; filter the returned `date`/`time` yourself for 'today'.",
+  "For 'what did I get today' across chats: call list_recent_chats first, keep the chats whose `time` is an 'HH:MM' value (today), then read_conversation only on those (a handful, not dozens) and synthesize. Prefer previews when full detail is not needed.",
   "Compose clear, natural messages in the user's language from their intent — never send the raw instruction verbatim.",
   "Provide either `chat` (group/community) or `to` (contact number) to send_whatsapp_message, never both.",
   "If the destination is ambiguous (several plausible chats, or none match), do not send — ask the user to clarify instead.",
@@ -36,6 +37,19 @@ const TOOL_DEFS: { name: string; description: string; schema: Record<string, unk
     description:
       "List the user's WhatsApp groups. Returns {count, groups}: use `count` as the authoritative total (do not recount the array yourself) and `groups` to resolve a fuzzy reference to an exact group name before sending.",
     schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "list_recent_chats",
+    description:
+      "List the most recent WhatsApp chats (newest first) with {name, time, preview, unread}. `time` is the last-activity time as WhatsApp shows it: an 'HH:MM' time means TODAY, otherwise it's 'hier'/a weekday/a date. Use this to find which chats are active today, then read_conversation on the relevant ones. Set onlyUnread to focus on unseen chats.",
+    schema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Max chats to list (default 20)." },
+        onlyUnread: { type: "boolean", description: "Only chats with unread messages." },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: "read_conversation",
@@ -108,7 +122,14 @@ interface ToolOutcome {
 /** Runs one tool call (shared across backends), gating the send behind confirmation. */
 async function execTool(
   name: string,
-  input: { chat?: string; to?: string; message?: string; limit?: number; since?: string },
+  input: {
+    chat?: string;
+    to?: string;
+    message?: string;
+    limit?: number;
+    since?: string;
+    onlyUnread?: boolean;
+  },
   wa: SocialConnector,
   autoSend: boolean,
   confirm: (q: string) => Promise<boolean>,
@@ -118,6 +139,11 @@ async function execTool(
     // Return the count explicitly — LLMs miscount long lists, so don't make
     // the model recount; `count` is the authoritative total.
     return { content: JSON.stringify({ count: groups.length, groups }) };
+  }
+
+  if (name === "list_recent_chats") {
+    const chats = await wa.listRecentChats({ limit: input.limit, onlyUnread: input.onlyUnread });
+    return { content: JSON.stringify({ count: chats.length, chats }) };
   }
 
   if (name === "read_conversation") {
@@ -199,7 +225,14 @@ async function runAnthropic(opts: Required<Pick<RunAiOptions, "connector" | "ins
       if (block.type !== "tool_use") continue;
       const out = await execTool(
         block.name,
-        block.input as { chat?: string; to?: string; message?: string; limit?: number; since?: string },
+        block.input as {
+          chat?: string;
+          to?: string;
+          message?: string;
+          limit?: number;
+          since?: string;
+          onlyUnread?: boolean;
+        },
         opts.connector,
         opts.autoSend,
         opts.confirm,
@@ -253,7 +286,14 @@ async function runOpenAI(opts: Required<Pick<RunAiOptions, "connector" | "instru
 
     for (const call of calls) {
       if (call.type !== "function") continue;
-      let input: { chat?: string; to?: string; message?: string; limit?: number; since?: string } = {};
+      let input: {
+        chat?: string;
+        to?: string;
+        message?: string;
+        limit?: number;
+        since?: string;
+        onlyUnread?: boolean;
+      } = {};
       try {
         input = JSON.parse(call.function.arguments || "{}");
       } catch {

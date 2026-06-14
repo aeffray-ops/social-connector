@@ -48,6 +48,7 @@ interface Args {
   limit?: number;
   since?: string;
   cacheTtl?: number;
+  unread?: boolean;
   json?: boolean;
   yes?: boolean;
   positionals: string[];
@@ -65,6 +66,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--limit" || a === "-n") out.limit = Number(argv[++i]);
     else if (a === "--since") out.since = argv[++i];
     else if (a === "--cache-ttl") out.cacheTtl = Number(argv[++i]);
+    else if (a === "--unread") out.unread = true;
     else if (a === "--json") out.json = true;
     else if (a === "--yes" || a === "-y") out.yes = true;
     else if (a === "--show" || a === "--headed" || a === "-s") out.show = true;
@@ -142,6 +144,7 @@ function generalHelp(): string {
     '  post    [provider] [--to <num>] "msg"  Post (Facebook/LinkedIn) or send (WhatsApp, needs --to)',
     "  read    [provider] [--limit N]         Read your own posts (Facebook, LinkedIn)",
     "  groups  [provider] [--limit N]         List your groups (WhatsApp)",
+    "  chats   [--limit N] [--unread]         List recent WhatsApp chats (name, time, preview, unread)",
     '  conversation --chat "name" [--limit N]  Read a WhatsApp conversation\'s recent messages',
     '  ai      "instruction"                  Natural-language WhatsApp via LLM (OpenAI or Anthropic key)',
     "  status  [provider]                     Print whether a valid session exists",
@@ -153,6 +156,8 @@ function generalHelp(): string {
     '  -c, --chat <name>     WhatsApp group/community by name (overrides --to)',
     "  -n, --limit <N>       read/groups/conversation: max items to fetch",
     "      --since <date>    conversation: keep messages on/after YYYY-MM-DD (best-effort)",
+    "      --unread          chats: only chats with unread messages",
+    "      --cache-ttl <s>   conversation: serve encrypted cache if fresher than N seconds",
     "      --json            read/groups/conversation: print as JSON instead of text",
     "  -y, --yes             ai: skip the confirmation prompt before sending",
     "  -s, --show, --headed  Show Chromium for this run (default: hidden). login is always visible.",
@@ -227,6 +232,17 @@ function commandHelp(cmd: string): string {
         `Examples:`,
         `  ${BIN} groups whatsapp`,
         `  ${BIN} groups whatsapp --json`,
+      ].join("\n");
+    case "chats":
+      return [
+        `Usage: ${BIN} chats [--limit N] [--unread] [--json]`,
+        "",
+        "List the most recent WhatsApp chats (newest first) with their last",
+        "time, a one-line preview, and unread count. `--unread` restricts to",
+        "chats with unseen messages. An 'HH:MM' time means activity today.",
+        "",
+        `Example:`,
+        `  ${BIN} chats --limit 15`,
       ].join("\n");
     case "conversation":
       return [
@@ -363,6 +379,24 @@ async function main(): Promise<void> {
         if (args.json) console.log(JSON.stringify(groups, null, 2));
         else if (groups.length === 0) console.log("No groups found.");
         else groups.forEach((g, i) => console.log(`${i + 1}. ${g}`));
+      } finally {
+        await fb.close();
+      }
+      break;
+    }
+
+    case "chats": {
+      const fb = makeConnector("whatsapp", { show: args.show });
+      try {
+        const chats = await fb.listRecentChats({ limit: args.limit, onlyUnread: args.unread });
+        if (args.json) console.log(JSON.stringify(chats, null, 2));
+        else if (chats.length === 0) console.log("No chats found.");
+        else
+          chats.forEach((c) =>
+            console.log(
+              `${c.unread ? `(${c.unread}) ` : ""}[${c.time ?? "?"}] ${c.name}: ${c.preview ?? ""}`,
+            ),
+          );
       } finally {
         await fb.close();
       }
