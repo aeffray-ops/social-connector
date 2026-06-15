@@ -6,6 +6,7 @@ import { runs } from "./runs.js";
 import { providersRouter } from "./routes/providers.js";
 import { broadcastRouter } from "./routes/broadcast.js";
 import { readRouter } from "./routes/read.js";
+import { aiRouter } from "./routes/ai.js";
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.PORT ?? 3001);
@@ -27,6 +28,7 @@ export function createApp(manager: ConnectorManager = new ConnectorManager()): e
   app.use("/api", providersRouter(manager));
   app.use("/api", broadcastRouter(manager));
   app.use("/api", readRouter(manager));
+  app.use("/api", aiRouter(manager));
 
   const webDist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
   app.use(express.static(webDist));

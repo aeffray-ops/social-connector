@@ -30,3 +30,5 @@ export {
 } from "./errors.js";
 export { ensureLoggedIn } from "./session.js";
 export type { ConnectorFactory, EnsureLoggedInOptions, LoginStatus } from "./session.js";
+export { runAi } from "./ai.js";
+export type { RunAiOptions, AiProvider } from "./ai.js";
