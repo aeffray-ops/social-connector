@@ -66,6 +66,12 @@ export class ConnectorManager {
     return this.factory(p, visible);
   }
 
+  /** Instant, browser-free session check (profile dir existence). */
+  hasSession(p: ProviderId): boolean {
+    const s = this.slots.get(p);
+    return (s?.connector ?? this.factory(p, false)).hasSession();
+  }
+
   /** Logs out a provider: closes its connector and deletes the saved profile. */
   async logout(p: ProviderId): Promise<void> {
     const s = this.slot(p);

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { BrowserSession } from "./BrowserSession.js";
 import { AuthManager, type ManualLoginOptions } from "./AuthManager.js";
@@ -89,6 +90,16 @@ export class SocialConnector {
   async isLoggedIn(): Promise<boolean> {
     await this.start();
     return this.auth.isLoggedIn();
+  }
+
+  /**
+   * Instant, browser-free heuristic: does a persisted profile exist on disk?
+   * login() creates it, logout() deletes it, so this reflects "has a session"
+   * without launching Chromium. Not a live validity check (use isLoggedIn for
+   * that) — a profile can exist while the remote session has expired.
+   */
+  hasSession(): boolean {
+    return existsSync(this.dataDir);
   }
 
   /**

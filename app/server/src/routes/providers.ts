@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ensureLoggedIn, type ProviderId } from "social-connector";
+import type { ProviderId } from "social-connector";
 import type { ConnectorManager } from "../ConnectorManager.js";
 import { runs } from "../runs.js";
 
@@ -9,17 +9,10 @@ const LABEL: Record<ProviderId, string> = { facebook: "Facebook", whatsapp: "Wha
 export function providersRouter(manager: ConnectorManager): Router {
   const r = Router();
 
-  r.get("/providers", async (_req, res) => {
-    // Probe providers in parallel — different providers use different browsers.
-    const out = await Promise.all(
-      ALL.map(async (id) => {
-        const loggedIn = await manager
-          .run(id, async () => (await manager.get(id)).isLoggedIn())
-          .catch(() => false);
-        return { id, label: LABEL[id], loggedIn };
-      }),
-    );
-    res.json(out);
+  r.get("/providers", (_req, res) => {
+    // Instant: profile-dir existence, no browser launch. login() creates the
+    // profile, logout() deletes it, so this tracks "has a session" reliably.
+    res.json(ALL.map((id) => ({ id, label: LABEL[id], loggedIn: manager.hasSession(id) })));
   });
 
   r.post("/login/:provider", (req, res) => {
@@ -29,11 +22,13 @@ export function providersRouter(manager: ConnectorManager): Router {
     res.json({ runId });
     void manager.run(provider, async () => {
       try {
-        const c = await ensureLoggedIn((visible) => manager.newConnector(provider, visible), {
-          autoLogin: true,
-          onStatus: (s) => runs.emit(runId, { type: "progress", data: { status: s } }),
-        });
+        // Connect = the user explicitly wants to log in. Open the visible
+        // window directly — skip the hidden probe ensureLoggedIn would do, so
+        // the popup appears as fast as Chromium can launch.
+        runs.emit(runId, { type: "progress", data: { status: "login-window-opened" } });
+        const c = manager.newConnector(provider, true);
         manager.set(provider, c);
+        await c.login();
         runs.emit(runId, { type: "done", data: { loggedIn: true } });
       } catch (e) {
         runs.emit(runId, { type: "error", data: { message: (e as Error).message } });
