@@ -33,9 +33,28 @@ export function createApp(manager: ConnectorManager = new ConnectorManager()): e
   app.use("/api", aiRouter(manager));
   app.use("/api", settingsRouter());
 
-  const webDist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+  const webDist =
+    process.env.RELAY_WEB_DIST ??
+    join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
   app.use(express.static(webDist));
   return app;
+}
+
+/**
+ * Starts the server (loads settings first). `port` 0 = OS-assigned free port.
+ * Returns the actual bound port. Used by the Electron desktop shell.
+ */
+export async function startServer(
+  port = Number(process.env.RELAY_PORT ?? process.env.PORT ?? 3001),
+): Promise<number> {
+  await loadSettings();
+  return new Promise((resolve, reject) => {
+    const server = createApp().listen(port, HOST, () => {
+      const addr = server.address();
+      resolve(typeof addr === "object" && addr ? addr.port : port);
+    });
+    server.on("error", reject);
+  });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

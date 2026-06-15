@@ -1,0 +1,32 @@
+{
+  "name": "relay-desktop",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Relay — desktop shell (Electron) around the local server + web UI",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node prepack.mjs && electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.protz2kpax.relay",
+    "productName": "Relay",
+    "directories": { "output": "release" },
+    "files": ["main.cjs"],
+    "extraResources": [
+      { "from": "staging/server", "to": "server" },
+      { "from": "../web/dist", "to": "web/dist" },
+      { "from": "staging/ms-playwright", "to": "ms-playwright" }
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.social-networking",
+      "identity": null,
+      "artifactName": "Relay-${version}-${arch}.${ext}"
+    }
+  }
+}

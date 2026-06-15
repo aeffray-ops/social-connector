@@ -1,0 +1,41 @@
+name: release
+
+# Build the macOS desktop app and attach the DMG/zip to a GitHub Release.
+# Trigger by pushing a version tag, e.g.:  git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+permissions:
+  contents: write # needed to create the Release
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Library (builds dist via the prepare script) + server + web + desktop deps.
+      - run: npm install
+      - run: cd app/server && npm install
+      - run: cd app/web && npm install
+      - run: cd app/desktop && npm install
+
+      # prepack.mjs stages the server + bundles Chromium, then electron-builder
+      # produces an unsigned DMG/zip in app/desktop/release.
+      - run: cd app/desktop && npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false" # unsigned build
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/desktop/release/*.dmg
+            app/desktop/release/*.zip
+          generate_release_notes: true

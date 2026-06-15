@@ -19,5 +19,8 @@ app/server/dist/
 app/web/dist/
 app/server/node_modules/
 app/web/node_modules/
+app/desktop/node_modules/
+app/desktop/staging/
+app/desktop/release/
 # Local Claude Code state / agent worktrees
 .claude/

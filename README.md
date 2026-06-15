@@ -105,6 +105,22 @@ Then open http://127.0.0.1:3001.
 - Reuses the same env as the CLI: `USER_DATA_DIR`, `HEADLESS`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`AI_PROVIDER`, `CACHE_PASSPHRASE`.
 - **API keys can also be set in-app** via the **Settings** screen (no `.env` needed). They're stored locally in `~/.relay/settings.json` and applied to the AI Assistant.
 
+## Desktop app (macOS)
+
+A double-click macOS app (`app/desktop`, Electron) wraps the local server + web
+UI and **bundles Chromium** — nothing for the end user to install.
+
+- **Build locally:** `cd app/desktop && npm install && npm run dist` → produces
+  `app/desktop/release/Relay-<version>-<arch>.dmg` (runs `prepack.mjs` first to
+  stage the server + download the bundled browser).
+- **Release via CI:** push a version tag — `git tag v0.2.0 && git push origin v0.2.0`
+  — and `.github/workflows/release.yml` builds the DMG/zip on a macOS runner and
+  attaches them to a GitHub Release.
+- **Unsigned build:** on first launch, right-click the app → **Open** to pass
+  Gatekeeper (signing/notarization needs an Apple Developer account).
+
+Sessions and data live under the app's data dir (`~/Library/Application Support/Relay`).
+
 ## Usage — API
 
 ```typescript

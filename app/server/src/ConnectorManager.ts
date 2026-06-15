@@ -1,6 +1,20 @@
+import { join } from "node:path";
 import { SocialConnector, type ProviderId } from "social-connector";
 
 type Factory = (provider: ProviderId, visible: boolean) => SocialConnector;
+
+/**
+ * Resolves the per-provider profile directory.
+ * - `USER_DATA_DIR` (explicit single dir) wins if set.
+ * - else `RELAY_DATA_DIR/<provider>-profile` (packaged app → writable app data,
+ *   one dir per provider so sessions don't collide).
+ * - else undefined → the library's cwd-relative default (`.<provider>-profile`).
+ */
+function profileDir(provider: ProviderId): string | undefined {
+  if (process.env.USER_DATA_DIR) return process.env.USER_DATA_DIR;
+  if (process.env.RELAY_DATA_DIR) return join(process.env.RELAY_DATA_DIR, `${provider}-profile`);
+  return undefined;
+}
 
 interface Slot {
   connector: SocialConnector | null;
@@ -15,7 +29,7 @@ export interface ConnectorManagerOptions {
 
 const DEFAULT_FACTORY: Factory = (provider, visible) =>
   new SocialConnector(provider, {
-    userDataDir: process.env.USER_DATA_DIR,
+    userDataDir: profileDir(provider),
     headless: visible ? false : true,
     verbose: false,
   });
