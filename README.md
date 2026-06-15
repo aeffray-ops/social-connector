@@ -53,7 +53,7 @@ social-connector groups whatsapp --json
 # Natural-language WhatsApp via an LLM (experimental). Backend = OpenAI by
 # default (OPENAI_API_KEY), or Anthropic (AI_PROVIDER=anthropic + ANTHROPIC_API_KEY).
 # The LLM composes the message, resolves the group name, then asks to confirm.
-social-connector ai "écris dans le groupe IDEAL CRM que la réu est demain à 9h"
+social-connector ai "écris dans le groupe Team Updates que la réu est demain à 9h"
 social-connector ai "envoie à Maman que j'arrive vers 20h" --yes   # skip confirmation
 
 # Show Chromium for a run (debug): -s / --show / --headed

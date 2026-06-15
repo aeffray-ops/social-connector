@@ -196,7 +196,7 @@ function generalHelp(): string {
     `  ${BIN} post whatsapp --chat "My community - Announcements" "Hi all!"`,
     `  ${BIN} read linkedin --limit 5`,
     `  ${BIN} groups whatsapp`,
-    `  ${BIN} ai "écris dans le groupe IDEAL CRM que la réu est demain à 9h"`,
+    `  ${BIN} ai "écris dans le groupe Team Updates que la réu est demain à 9h"`,
     `  ${BIN} status linkedin`,
   ].join("\n");
 }
@@ -279,7 +279,7 @@ function commandHelp(cmd: string): string {
         "the browser if it is that fresh; otherwise it re-scrapes and updates it.",
         "",
         `Example:`,
-        `  ${BIN} conversation --chat "IDEAL CRM / OUTILS" --limit 30 --cache-ttl 600`,
+        `  ${BIN} conversation --chat "Team Announcements" --limit 30 --cache-ttl 600`,
       ].join("\n");
     case "ai":
       return [
@@ -296,7 +296,7 @@ function commandHelp(cmd: string): string {
         "Options: -y/--yes (skip confirmation), -s/--show",
         "",
         `Example:`,
-        `  ${BIN} ai "écris dans le groupe IDEAL CRM que la réu est demain à 9h"`,
+        `  ${BIN} ai "écris dans le groupe Team Updates que la réu est demain à 9h"`,
       ].join("\n");
     case "status":
       return [
