@@ -15,3 +15,7 @@ li-state.json
 # Encrypted conversation cache
 .cache/
 screenshots/
+app/server/dist/
+app/web/dist/
+app/server/node_modules/
+app/web/node_modules/

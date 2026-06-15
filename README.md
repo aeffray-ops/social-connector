@@ -73,6 +73,37 @@ social-connector status facebook
 
 **Auto-login:** action commands (`post`, `read`, `groups`, `chats`, `conversation`, `ai`) open a visible login window automatically when no valid session exists, then continue once you've logged in. Pass `--no-login` to error out instead (useful for non-interactive scripts).
 
+## Web UI (experimental)
+
+A local React UI for the whole library — broadcast one message to several providers at once, plus sessions/login, reading, and the AI agent.
+
+### Install
+
+```bash
+npm run app:install
+```
+
+### Development
+
+```bash
+npm run app:dev
+```
+
+Then open http://127.0.0.1:5173 (Vite proxies `/api` to the server on `:3001`).
+
+### Production
+
+```bash
+npm run app:build && npm run app:start
+```
+
+Then open http://127.0.0.1:3001.
+
+### Notes
+
+- **Localhost-only**: binds `127.0.0.1`, no auth — it controls logged-in social accounts.
+- Reuses the same env as the CLI: `USER_DATA_DIR`, `HEADLESS`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`AI_PROVIDER`, `CACHE_PASSPHRASE`.
+
 ## Usage — API
 
 ```typescript

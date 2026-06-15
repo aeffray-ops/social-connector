@@ -30,7 +30,11 @@
     "login:li": "tsx src/cli.ts login --provider linkedin",
     "typecheck": "tsc --noEmit",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "app:install": "npm run build && cd app/server && npm install && cd ../web && npm install",
+    "app:dev": "concurrently -n server,web \"cd app/server && npm run dev\" \"cd app/web && npm run dev\"",
+    "app:build": "npm run build && cd app/server && npm run build && cd ../web && npm run build",
+    "app:start": "cd app/server && npm start"
   },
   "keywords": [
     "facebook",
@@ -48,6 +52,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "concurrently": "^10.0.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.8"
