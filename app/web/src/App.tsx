@@ -1,23 +1,57 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { getJSON, Provider } from "./api.js";
+import { Sidebar } from "./components/Sidebar.js";
+import { TopBar } from "./components/TopBar.js";
+import { ToastProvider } from "./components/Toast.js";
 import { Broadcast } from "./views/Broadcast.js";
-import { Sessions } from "./views/Sessions.js";
-import { Read } from "./views/Read.js";
-import { Ai } from "./views/Ai.js";
+import { Inbox } from "./views/Read.js";
+import { Assistant } from "./views/Ai.js";
+import { Connections } from "./views/Sessions.js";
 
-const TABS = { broadcast: Broadcast, sessions: Sessions, read: Read, ai: Ai } as const;
-type Tab = keyof typeof TABS;
+type View = "broadcast" | "inbox" | "assistant" | "connections";
+
+const VIEW_META: Record<View, { title: string; subtitle: string }> = {
+  broadcast: { title: "Broadcast", subtitle: "Send one message to all your channels at once" },
+  inbox: { title: "Inbox", subtitle: "Read and manage your recent conversations" },
+  assistant: { title: "Assistant", subtitle: "Intelligent agent for your social accounts" },
+  connections: { title: "Connections", subtitle: "Manage your social provider sessions" },
+};
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("broadcast");
-  const View = TABS[tab];
+  const [view, setView] = useState<View>("broadcast");
+  const [providers, setProviders] = useState<Provider[]>([]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await getJSON<Provider[]>("/api/providers");
+      setProviders(data);
+    } catch {
+      // silently fail — providers stay as-is
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const meta = VIEW_META[view];
+
   return (
-    <div style={{ fontFamily: "system-ui", maxWidth: 800, margin: "2rem auto" }}>
-      <nav style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(Object.keys(TABS) as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} disabled={t === tab}>{t}</button>
-        ))}
-      </nav>
-      <View />
-    </div>
+    <ToastProvider>
+      <div className="app-shell">
+        <Sidebar activeView={view} onNav={setView} providers={providers} />
+        <div className="main-area">
+          <TopBar title={meta.title} subtitle={meta.subtitle} providers={providers} />
+          <div className="content-area">
+            {view === "broadcast" && <Broadcast providers={providers} />}
+            {view === "inbox" && <Inbox />}
+            {view === "assistant" && <Assistant />}
+            {view === "connections" && (
+              <Connections providers={providers} refresh={refresh} />
+            )}
+          </div>
+        </div>
+      </div>
+    </ToastProvider>
   );
 }
