@@ -36,7 +36,20 @@ export function createApp(manager: ConnectorManager = new ConnectorManager()): e
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  createApp().listen(PORT, HOST, () => {
-    console.log(`social-connector UI on http://${HOST}:${PORT}`);
+  const server = createApp().listen(PORT, HOST, () => {
+    console.log(`Relay UI on http://${HOST}:${PORT}`);
+  });
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `\n[Relay] Port ${PORT} is already in use.\n` +
+          `Another Relay server (or \`npm run app:dev\`, which serves the API on ${PORT}) is probably running.\n` +
+          `Either use the already-running server, stop it, or start this one on another port:\n` +
+          `  PORT=3002 npm run app:start\n`,
+      );
+    } else {
+      console.error(`[Relay] Failed to start: ${err.message}`);
+    }
+    process.exit(1);
   });
 }
