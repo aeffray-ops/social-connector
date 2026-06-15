@@ -28,3 +28,5 @@ export {
   UnknownProviderError,
   UnsupportedActionError,
 } from "./errors.js";
+export { ensureLoggedIn } from "./session.js";
+export type { ConnectorFactory, EnsureLoggedInOptions } from "./session.js";
