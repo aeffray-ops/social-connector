@@ -30,9 +30,59 @@ const MESSAGE_BOX = [
 ];
 
 const SEND_BUTTON = [
+  '[data-icon="wds-ic-send-filled"]',
+  'span[data-icon="wds-ic-send-filled"]',
   'button[aria-label="Envoyer"]',
   'button[aria-label="Send"]',
   'span[data-icon="send"]',
+  'div[role="button"][aria-label="Envoyer"]',
+  '[data-icon="send"]',
+];
+
+/** Footer "attach" (+/clip) button that opens the media menu. */
+const ATTACH_BUTTON = [
+  'button[aria-label="Joindre"]',
+  'button[aria-label="Attach"]',
+  'div[title="Joindre"]',
+  'div[title="Attach"]',
+  'span[data-icon="plus-rounded"]',
+  'span[data-icon="attach-menu-plus"]',
+  'span[data-icon="clip"]',
+  'span[data-icon="plus"]',
+  '[data-icon="plus-rounded"]',
+  '[data-icon="clip"]',
+];
+
+/** "Photos & videos" entry in the attach menu (triggers the image/video input). */
+const PHOTOS_ITEM = [
+  '[aria-label="Photos et vidéos"]',
+  '[aria-label="Photos & videos"]',
+  '[aria-label*="Photos" i]',
+  'li:has-text("Photos et vidéos")',
+  'div[role="button"]:has-text("Photos et vidéos")',
+];
+
+/**
+ * Caption box on the media preview screen. Its aria-label is exactly "Entrez un
+ * message" (the main compose box's aria-label is "Écrivez un message dans…"),
+ * so this targets the caption — never the message bar behind the preview.
+ */
+/**
+ * Send button ON THE MEDIA PREVIEW. Its aria-label is "Envoyer N élément(s)
+ * sélectionné(s)" — distinct from the main bar's plain "Envoyer" button behind
+ * the preview (clicking that one sends nothing). Match on "sélectionn".
+ */
+const MEDIA_SEND_BUTTON = [
+  'div[role="button"][aria-label*="sélectionn" i]',
+  '[aria-label*="élément sélectionn" i]',
+  '[role="button"][aria-label*="sélectionn" i]',
+];
+
+const CAPTION_BOX = [
+  'div[contenteditable="true"][aria-label="Entrez un message"]',
+  '[data-testid="media-caption-input-container"]',
+  'div[contenteditable="true"][aria-label*="légende" i]',
+  'div[contenteditable="true"][aria-label*="caption" i]',
 ];
 
 const SEARCH_BOX = [
@@ -201,8 +251,48 @@ export const whatsapp: SocialProvider = {
 
     log.step("Waiting for the message box...");
     const box = await requireVisible(page, MESSAGE_BOX, "WhatsApp message box", 30000);
-    await box.click();
 
+    // Media path: attach via the "+" menu, add the text as caption, then send.
+    if (options.media?.length) {
+      log.step(`Attaching ${options.media.length} file(s)...`);
+      const attach = await firstVisible(page, ATTACH_BUTTON, 8000);
+      if (!attach) throw new PostFailedError("WhatsApp: attach (+) button not found.");
+      let chooser = (await Promise.all([
+        page.waitForEvent("filechooser", { timeout: 5000 }).catch(() => null),
+        attach.click(),
+      ]))[0];
+      if (!chooser) {
+        // Menu opened without a chooser → click the "Photos & videos" entry.
+        const photos = await firstVisible(page, PHOTOS_ITEM, 4000);
+        if (photos) {
+          chooser = (await Promise.all([
+            page.waitForEvent("filechooser", { timeout: 5000 }).catch(() => null),
+            photos.click(),
+          ]))[0];
+        }
+      }
+      if (chooser) await chooser.setFiles(options.media);
+      else await page.locator('input[type="file"]').first().setInputFiles(options.media);
+
+      await page.waitForTimeout(3500); // preview render
+      if (content) {
+        const caption = await firstVisible(page, CAPTION_BOX, 8000);
+        if (caption) { await caption.click(); await caption.type(content, { delay: 10 }); }
+      }
+      log.step("Sending media...");
+      // Target the PREVIEW's send button (not the main bar behind it).
+      const send = await firstVisible(page, MEDIA_SEND_BUTTON, 8000);
+      if (send) await send.click();
+      else await page.keyboard.press("Enter");
+      // Confirm: the preview closes (its send button disappears).
+      if (!(await waitGone(page, MEDIA_SEND_BUTTON, 15000))) {
+        throw new PostFailedError("WhatsApp: media not confirmed (preview stayed open).");
+      }
+      log.step("Media message sent.");
+      return;
+    }
+
+    await box.click();
     log.step("Typing the message...");
     await box.type(content, { delay: 10 });
 

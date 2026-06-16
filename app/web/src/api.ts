@@ -14,6 +14,13 @@ export async function postJSON<T>(path: string, body: unknown): Promise<T> {
   return r.json();
 }
 
+/** POST multipart/form-data (used by Broadcast to upload media + fields). */
+export async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const r = await fetch(path, { method: "POST", body: form });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
+  return r.json();
+}
+
 export interface RunEvent {
   type: string;
   data?: any;

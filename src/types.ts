@@ -47,6 +47,13 @@ export interface PostOptions {
   chat?: string;
   /** Screenshot before send/post (path). Debug. */
   screenshotPath?: string;
+  /**
+   * Local file paths to attach (images and/or a video). Convention: either a
+   * single video OR up to 3 images, plus the text. Each provider attaches them
+   * its own way: Facebook → "Photo/Vidéo", LinkedIn → "Ajouter un média",
+   * WhatsApp → the paperclip. Empty/omitted = text-only post.
+   */
+  media?: string[];
 }
 
 /** Context passed to a provider's post() action. */

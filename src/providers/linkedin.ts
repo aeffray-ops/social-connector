@@ -87,7 +87,35 @@ export const linkedin: SocialProvider = {
 
     log.step("Typing the text...");
     await input.click();
-    await input.type(content, { delay: 15 });
+    if (content) await input.type(content, { delay: 15 });
+
+    if (options.media?.length) {
+      log.step(`Attaching ${options.media.length} file(s)...`);
+      const mediaBtn = await firstVisible(
+        page,
+        ['button[aria-label="Ajouter un média"]', 'button[aria-label*="média" i]', 'button[aria-label*="media" i]'],
+        6000,
+      );
+      if (!mediaBtn) throw new PostFailedError('LinkedIn "Add media" button not found.');
+      // Clicking it opens the OS file chooser; setFiles satisfies it.
+      const [chooser] = await Promise.all([
+        page.waitForEvent("filechooser", { timeout: 6000 }).catch(() => null),
+        mediaBtn.click(),
+      ]);
+      if (chooser) await chooser.setFiles(options.media);
+      else await page.locator('input[type="file"]').first().setInputFiles(options.media);
+      // Wait for the upload, then advance past the media editor ("Suivant").
+      await page.waitForTimeout(Math.min(4000 + options.media.length * 2000, 16000));
+      const next = await firstVisible(
+        page,
+        ['div[role="dialog"] button:has-text("Suivant")', 'div[role="dialog"] button:has-text("Next")'],
+        8000,
+      );
+      if (next) {
+        await next.click().catch(() => {});
+        await page.waitForTimeout(2000);
+      }
+    }
 
     if (options.screenshotPath) {
       await page.screenshot({ path: options.screenshotPath }).catch(() => {});

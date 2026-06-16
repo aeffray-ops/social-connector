@@ -109,7 +109,16 @@ export const facebook: SocialProvider = {
 
     log.step("Typing the text...");
     await input.click();
-    await input.type(content, { delay: 15 });
+    if (content) await input.type(content, { delay: 15 });
+
+    if (options.media?.length) {
+      log.step(`Attaching ${options.media.length} file(s)...`);
+      // The composer already holds a hidden image/video <input type=file>.
+      const fileInput = page.locator('input[type="file"][accept*="video"]').first();
+      await fileInput.setInputFiles(options.media);
+      // Let the upload register (previews appear); videos take longer.
+      await page.waitForTimeout(Math.min(5000 + options.media.length * 2500, 20000));
+    }
 
     if (options.screenshotPath) {
       await page.screenshot({ path: options.screenshotPath }).catch(() => {});

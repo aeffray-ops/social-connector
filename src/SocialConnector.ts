@@ -115,7 +115,7 @@ export class SocialConnector {
    */
   async post(content: string, options: PostOptions = {}): Promise<void> {
     await this.start();
-    if (!content.trim()) throw new Error("Empty content.");
+    if (!content.trim() && !options.media?.length) throw new Error("Empty content.");
     if (!(await this.auth.isLoggedIn())) {
       throw new NotLoggedInError(
         `No valid session for ${this.provider.label}. Run login() first.`,
