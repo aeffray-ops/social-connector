@@ -8,7 +8,11 @@ import { useToast } from "../components/Toast.js";
 
 interface Props {
   providers: Provider[];
-  refresh: () => Promise<void>;
+  refresh: () => Promise<Provider[]>;
+  /** Authoritative re-check (launches a hidden browser per provider). */
+  verify: () => Promise<void>;
+  /** Per-provider "real check in progress" flags. */
+  checking: Record<string, boolean>;
 }
 
 type LoginStatus = "opening" | "waiting" | "done" | "error";
@@ -25,12 +29,13 @@ const PROVIDER_CLASS: Record<string, string> = {
   whatsapp: "wa",
 };
 
-export function Connections({ providers, refresh }: Props) {
+export function Connections({ providers, refresh, verify, checking }: Props) {
   const [loginState, setLoginState] = useState<LoginState | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState<Provider | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const streamCloser = useRef<(() => void) | null>(null);
   const { toast } = useToast();
+  const anyChecking = Object.values(checking).some(Boolean);
 
   useEffect(() => () => streamCloser.current?.(), []);
 
@@ -95,12 +100,22 @@ export function Connections({ providers, refresh }: Props) {
             Connect your social accounts to start broadcasting and reading messages.
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={refresh}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-          </svg>
-          Refresh
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={verify}
+          disabled={!!loginState || anyChecking}
+          title="Re-check the real login status of each account"
+        >
+          {anyChecking ? (
+            <Spinner size="sm" />
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+          )}
+          {anyChecking ? "Checking…" : "Refresh"}
         </Button>
       </div>
 
@@ -109,6 +124,7 @@ export function Connections({ providers, refresh }: Props) {
           const cls = PROVIDER_CLASS[p.id] ?? "";
           const isConnecting = loginState?.providerId === p.id;
           const isDisconnecting = disconnecting === p.id;
+          const isChecking = !!checking[p.id];
           const progress = loginProgress(p.id);
 
           return (
@@ -119,14 +135,21 @@ export function Connections({ providers, refresh }: Props) {
 
               <div className="connection-name">{p.label}</div>
 
-              <div className={`connection-badge ${p.loggedIn ? "connected" : "disconnected"}`}>
+              <div
+                className={`connection-badge ${
+                  isChecking ? "checking" : p.loggedIn ? "connected" : "disconnected"
+                }`}
+              >
                 <span className="connection-badge-dot" />
-                {p.loggedIn ? "Connected" : "Disconnected"}
+                {isChecking ? "Checking…" : p.loggedIn ? "Connected" : "Disconnected"}
               </div>
 
               <div className="connection-progress">
                 {isConnecting && progress && (
                   <span style={{ color: "var(--accent-soft)" }}>{progress}</span>
+                )}
+                {!isConnecting && isChecking && (
+                  <span style={{ color: "var(--muted)" }}>Verifying real session…</span>
                 )}
               </div>
 

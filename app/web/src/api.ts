@@ -59,6 +59,13 @@ export async function logout(provider: string): Promise<{ ok: boolean; loggedIn:
   return postJSON(`/api/logout/${provider}`, {});
 }
 
+/** Authoritative check: launches a hidden browser to confirm the real session. */
+export async function verifyProvider(
+  provider: string,
+): Promise<{ id: string; loggedIn: boolean; error?: string }> {
+  return postJSON(`/api/verify/${provider}`, {});
+}
+
 /** Masked AI settings (provider + key hints, never the raw secrets). */
 export interface SettingsView {
   aiProvider: "openai" | "anthropic" | null;

@@ -1,5 +1,7 @@
-import { collectPosts, requireVisible, waitGone } from "../dom.js";
+import type { Page } from "playwright";
+import { collectPosts, firstVisible, requireVisible, waitGone } from "../dom.js";
 import { PostFailedError } from "../errors.js";
+import type { Logger } from "../logger.js";
 import type { SocialProvider } from "../types.js";
 
 /**
@@ -15,18 +17,60 @@ const COMPOSER_TRIGGER = [
 ];
 
 const COMPOSER_INPUT = [
-  'div[role="dialog"] div[contenteditable="true"][role="textbox"]',
-  'div[role="dialog"] div[contenteditable="true"]',
+  // Composer-specific first (its own aria-label) so we never type into a
+  // Messenger chat box, which is also a contenteditable dialog.
+  'div[role="dialog"] div[contenteditable="true"][aria-label^="Quoi de neuf"]',
+  'div[role="dialog"] div[contenteditable="true"][aria-label^="What\'s on your mind"]',
   'div[aria-label="Quoi de neuf ?"][contenteditable="true"]',
   'div[aria-label^="What\'s on your mind"][contenteditable="true"]',
+  'div[role="dialog"] div[contenteditable="true"][role="textbox"]',
+  'div[role="dialog"] div[contenteditable="true"]',
+];
+
+// Facebook's composer is now a 2-STEP flow: type → "Suivant"/"Next" → then
+// "Publier"/"Post". Some accounts still publish in one step. Messenger dialogs
+// never carry these exact labels, so scoping by aria-label is safe.
+const NEXT_BUTTON = [
+  'div[role="dialog"] [role="button"][aria-label="Suivant"]',
+  'div[role="dialog"] [role="button"][aria-label="Next"]',
 ];
 
 const PUBLISH_BUTTON = [
+  'div[role="dialog"] [role="button"][aria-label="Publier"]',
+  'div[role="dialog"] [role="button"][aria-label="Post"]',
   'div[role="dialog"] div[aria-label="Publier"][role="button"]',
   'div[role="dialog"] div[aria-label="Post"][role="button"]',
-  'div[role="dialog"] [aria-label="Publier"]',
-  'div[role="dialog"] [aria-label="Post"]',
 ];
+
+/**
+ * Drives the composer to publish. Handles both the single-step ("Publier"
+ * right away) and the two-step ("Suivant"/"Next" then "Publier") variants:
+ * try to publish; if only a Next button is present, click it and retry. The
+ * action buttons can be briefly aria-disabled until the text registers.
+ */
+async function advanceAndPublish(page: Page, log: Logger): Promise<boolean> {
+  for (let step = 0; step < 3; step++) {
+    const publish = await firstVisible(page, PUBLISH_BUTTON, step === 0 ? 2500 : 6000);
+    if (publish) {
+      if ((await publish.getAttribute("aria-disabled").catch(() => null)) === "true") {
+        await page.waitForTimeout(800);
+      }
+      await publish.scrollIntoViewIfNeeded().catch(() => {});
+      await publish.click();
+      return true;
+    }
+    const next = await firstVisible(page, NEXT_BUTTON, 3000);
+    if (!next) return false;
+    if ((await next.getAttribute("aria-disabled").catch(() => null)) === "true") {
+      await page.waitForTimeout(1000);
+    }
+    await next.scrollIntoViewIfNeeded().catch(() => {});
+    await next.click().catch(() => {});
+    log.step("Composer: moving to the next step…");
+    await page.waitForTimeout(1500);
+  }
+  return false;
+}
 
 export const facebook: SocialProvider = {
   id: "facebook",
@@ -72,13 +116,22 @@ export const facebook: SocialProvider = {
       log.info(`Screenshot: ${options.screenshotPath}`);
     }
 
-    log.step("Clicking Publish...");
-    const publish = await requireVisible(page, PUBLISH_BUTTON, "Publish button");
-    await publish.click();
-
-    if (!(await waitGone(page, PUBLISH_BUTTON, 20000))) {
+    log.step("Publishing (Facebook's multi-step composer)...");
+    if (!(await advanceAndPublish(page, log))) {
       throw new PostFailedError(
-        "Facebook post not confirmed (modal stayed open).",
+        'Facebook "Publish" button not found. The composer may have changed — ' +
+          "update NEXT_BUTTON/PUBLISH_BUTTON in src/providers/facebook.ts.",
+      );
+    }
+
+    // Confirm via the composer closing — more reliable than watching the
+    // button, whose markup FB rewrites often.
+    const confirmed =
+      (await waitGone(page, COMPOSER_INPUT, 20000)) ||
+      (await waitGone(page, PUBLISH_BUTTON, 5000));
+    if (!confirmed) {
+      throw new PostFailedError(
+        "Facebook post not confirmed (composer stayed open).",
       );
     }
     log.step("Post confirmed.");

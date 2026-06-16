@@ -27,6 +27,12 @@ export interface SocialConnectorOptions {
   slowMo?: number;
   /** Browser locale. Default: fr-FR. */
   locale?: string;
+  /**
+   * Browser channel: "chrome" / "msedge" (a real installed browser, evades
+   * Google's automation block) or "chromium" (Playwright's bundled engine).
+   * Default: auto (chrome → msedge → bundled).
+   */
+  channel?: "chrome" | "msedge" | "chromium";
   /** Progress logs (steps + timing). Default: true. */
   verbose?: boolean;
 }
@@ -63,6 +69,7 @@ export class SocialConnector {
       headless: opts.headless ?? true,
       slowMo: opts.slowMo,
       locale: opts.locale,
+      channel: opts.channel,
       logger,
     });
     this.auth = new AuthManager(this.session, this.provider.auth);

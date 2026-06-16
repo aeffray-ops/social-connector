@@ -23,6 +23,10 @@ const COMPOSER_TRIGGER = [
   ".share-box-feed-entry__trigger",
   'button[aria-label*="Commencer un post"]',
   'button[aria-label*="Start a post"]',
+  // LinkedIn now renders the trigger as a plain DIV — match by exact text.
+  'div.share-box-feed-entry__trigger',
+  'text="Commencer un post"',
+  'text="Start a post"',
 ];
 
 const COMPOSER_INPUT = [
@@ -44,11 +48,18 @@ export const linkedin: SocialProvider = {
   auth: {
     homeUrl: "https://www.linkedin.com/feed/",
     loginUrl: "https://www.linkedin.com/login",
+    // Logged-in LinkedIn URLs (feed, profile, network, messaging…). Used as a
+    // robust fallback when the DOM markers below drift.
+    loggedInUrlPattern: "linkedin\\.com/(feed|in/|mynetwork|messaging|notifications|jobs)",
     loggedInMarkers: [
       ".share-box-feed-entry__trigger",
       'button[aria-label*="Commencer un post"]',
       'button[aria-label*="Start a post"]',
       "#global-nav",
+      "#global-nav-typeahead",
+      ".global-nav__me",
+      "img.global-nav__me-photo",
+      'a[href*="/feed/"]',
       'header[role="banner"] input[role="combobox"]',
     ],
     loggedOutMarkers: [
@@ -84,12 +95,27 @@ export const linkedin: SocialProvider = {
     }
 
     log.step("Clicking Publish...");
-    const publish = await requireVisible(page, PUBLISH_BUTTON, "LinkedIn Publish button");
+    let publish = await firstVisible(page, PUBLISH_BUTTON, 8000);
+    if (!publish) {
+      // Fallback: locate the primary action by its accessible name.
+      const byRole = page.getByRole("button", { name: /^(Publier|Post)$/ }).last();
+      if (await byRole.count().then((n) => n > 0).catch(() => false)) publish = byRole;
+    }
+    if (!publish) {
+      throw new PostFailedError(
+        'LinkedIn "Publish" button not found. The UI may have changed — ' +
+          "update PUBLISH_BUTTON in src/providers/linkedin.ts.",
+      );
+    }
+    await publish.scrollIntoViewIfNeeded().catch(() => {});
     await publish.click();
 
-    if (!(await waitGone(page, PUBLISH_BUTTON, 20000))) {
+    const confirmed =
+      (await waitGone(page, COMPOSER_INPUT, 20000)) ||
+      (await waitGone(page, PUBLISH_BUTTON, 5000));
+    if (!confirmed) {
       throw new PostFailedError(
-        "LinkedIn post not confirmed (modal stayed open).",
+        "LinkedIn post not confirmed (composer stayed open).",
       );
     }
     log.step("Post confirmed.");

@@ -51,7 +51,7 @@ export async function requireVisible(
     throw new SelectorError(
       `Element not found: "${label}". Selectors tried:\n  - ${selectors.join(
         "\n  - ",
-      )}\nThe Facebook UI has probably changed — update src/selectors.ts.`,
+      )}\nThe site's UI has probably changed — update the selectors for this provider in src/providers/.`,
     );
   }
   return loc;

@@ -17,6 +17,13 @@ export interface ProviderAuthConfig {
   /** Selectors present ONLY when logged out. */
   loggedOutMarkers: readonly string[];
   /**
+   * Optional regex (source string) matched against the page URL. When the URL
+   * matches AND no loggedOutMarker is visible, the session is treated as valid.
+   * A robust fallback when the logged-in DOM markers drift (e.g. LinkedIn
+   * lands on /feed/ after login). Tested case-insensitively.
+   */
+  loggedInUrlPattern?: string;
+  /**
    * Max wait (ms) for loggedInMarkers when probing session validity.
    * Bump for slow-loading providers (e.g. WhatsApp Web). Default: 5000.
    */

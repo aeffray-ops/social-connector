@@ -16,9 +16,23 @@ export interface BrowserSessionOptions {
   slowMo?: number;
   /** Browser locale. Default: fr-FR. */
   locale?: string;
+  /**
+   * Browser channel to launch. A REAL installed browser ("chrome" / "msedge")
+   * is far less likely to trip Google's "this browser may not be secure"
+   * block than Playwright's bundled Chromium. Default: try chrome, then
+   * msedge, then the bundled Chromium. Pass an explicit value to force one.
+   */
+  channel?: "chrome" | "msedge" | "chromium";
   /** Progress logger. Default: silent. */
   logger?: Logger;
 }
+
+/** Launch order when no channel is forced: real browsers first, bundled last. */
+const CHANNEL_FALLBACK: Array<"chrome" | "msedge" | undefined> = [
+  "chrome",
+  "msedge",
+  undefined, // bundled Chromium
+];
 
 /**
  * Manages the Playwright lifecycle and session persistence.
@@ -44,17 +58,53 @@ export class BrowserSession {
     this.log.step(
       `Launching the browser (headless=${this.opts.headless ?? false})...`,
     );
-    this.context = await chromium.launchPersistentContext(this.opts.userDataDir, {
+
+    // Common options. Note: NO spoofed user-agent. A real Chrome/Edge already
+    // sends a coherent UA; a fake one (e.g. macOS while running on Windows)
+    // is itself a bot-detection signal. We also strip Playwright's automation
+    // flags, which is what makes Google show "this browser may not be secure".
+    const common = {
       headless: this.opts.headless ?? false,
       slowMo: this.opts.slowMo,
       locale: this.opts.locale ?? "fr-FR",
-      // Realistic user-agent to reduce bot detection.
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
       viewport: { width: 1280, height: 900 },
-    });
+      args: ["--disable-blink-features=AutomationControlled"],
+      ignoreDefaultArgs: ["--enable-automation"],
+    };
+
+    const channels: Array<"chrome" | "msedge" | undefined> = this.opts.channel
+      ? [this.opts.channel === "chromium" ? undefined : this.opts.channel]
+      : CHANNEL_FALLBACK;
+
+    let lastErr: unknown;
+    for (const channel of channels) {
+      try {
+        this.context = await chromium.launchPersistentContext(this.opts.userDataDir, {
+          ...common,
+          ...(channel ? { channel } : {}),
+        });
+        this.log.info(`Browser engine: ${channel ?? "bundled chromium"}`);
+        break;
+      } catch (e) {
+        lastErr = e;
+        this.log.info(`Channel "${channel ?? "chromium"}" unavailable — trying next…`);
+      }
+    }
+    if (!this.context) {
+      throw new Error(
+        `Could not launch any browser (tried: ${channels
+          .map((c) => c ?? "chromium")
+          .join(", ")}). Last error: ${(lastErr as Error)?.message ?? lastErr}`,
+      );
+    }
     this.log.info(`Persistent profile: ${this.opts.userDataDir}`);
+
+    // Extra stealth: hide the webdriver flag some sites probe via JS.
+    await this.context
+      .addInitScript(() => {
+        Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      })
+      .catch(() => {});
 
     this.pageInstance = this.context.pages()[0] ?? (await this.context.newPage());
     this.log.info("Browser ready.");

@@ -23,7 +23,8 @@ export function broadcastRouter(manager: ConnectorManager): Router {
       return manager.run(p, async () => {
         runs.emit(runId, { type: "provider_status", data: { provider: p, status: "sending" } });
         try {
-          const c = await manager.get(p);
+          // Visible connector so the user can watch the post happen.
+          const c = await manager.getVisible(p);
           if (!(await c.isLoggedIn())) throw new Error("not logged in");
           const opts = p === "whatsapp" ? { target: whatsapp?.to, chat: whatsapp?.chat } : {};
           await c.post(message, opts);

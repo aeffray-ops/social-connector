@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getJSON, Provider } from "./api.js";
+import { getJSON, verifyProvider, Provider } from "./api.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { TopBar } from "./components/TopBar.js";
 import { ToastProvider } from "./components/Toast.js";
@@ -22,19 +22,51 @@ const VIEW_META: Record<View, { title: string; subtitle: string }> = {
 export function App() {
   const [view, setView] = useState<View>("broadcast");
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [checking, setChecking] = useState<Record<string, boolean>>({});
 
+  // Instant, optimistic load (profile-dir hint) — just for a fast first paint.
   const refresh = useCallback(async () => {
     try {
       const data = await getJSON<Provider[]>("/api/providers");
-      setProviders(data);
+      setProviders((prev) =>
+        // Keep any already-verified loggedIn flags; only adopt new ids/labels.
+        data.map((d) => {
+          const known = prev.find((p) => p.id === d.id);
+          return known ? { ...d, loggedIn: known.loggedIn } : d;
+        }),
+      );
+      return data;
     } catch {
-      // silently fail — providers stay as-is
+      return [] as Provider[];
     }
   }, []);
 
+  // Authoritative check: hit /verify for each provider in parallel and correct
+  // each badge as its real result arrives (fast providers don't wait on slow
+  // ones like WhatsApp). This is what makes Refresh trustworthy.
+  const verify = useCallback(async () => {
+    const data = await getJSON<Provider[]>("/api/providers").catch(() => [] as Provider[]);
+    const ids = data.length ? data.map((p) => p.id) : ["facebook", "whatsapp", "linkedin"];
+    if (data.length) setProviders((prev) => (prev.length ? prev : data));
+    setChecking(Object.fromEntries(ids.map((id) => [id, true])));
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const { loggedIn } = await verifyProvider(id);
+          setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, loggedIn } : p)));
+        } catch {
+          /* leave the optimistic value in place */
+        } finally {
+          setChecking((prev) => ({ ...prev, [id]: false }));
+        }
+      }),
+    );
+  }, []);
+
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    // First paint instantly, then correct with the real check.
+    refresh().then(() => verify());
+  }, [refresh, verify]);
 
   const meta = VIEW_META[view];
 
@@ -49,7 +81,12 @@ export function App() {
             {view === "inbox" && <Inbox />}
             {view === "assistant" && <Assistant />}
             {view === "connections" && (
-              <Connections providers={providers} refresh={refresh} />
+              <Connections
+                providers={providers}
+                refresh={refresh}
+                verify={verify}
+                checking={checking}
+              />
             )}
             {view === "settings" && <Settings />}
           </div>

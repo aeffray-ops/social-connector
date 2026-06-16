@@ -20,6 +20,8 @@ interface Slot {
   connector: SocialConnector | null;
   lastUsed: number;
   queue: Promise<unknown>;
+  /** Whether the current connector was launched visible (non-headless). */
+  visible?: boolean;
 }
 
 export interface ConnectorManagerOptions {
@@ -27,10 +29,21 @@ export interface ConnectorManagerOptions {
   idleMs?: number;
 }
 
+/**
+ * Browser channel for the automation. A real installed browser dodges
+ * Google's "this browser may not be secure" block; override with
+ * RELAY_BROWSER_CHANNEL=chrome|msedge|chromium. Default: auto-detect.
+ */
+function browserChannel(): "chrome" | "msedge" | "chromium" | undefined {
+  const c = process.env.RELAY_BROWSER_CHANNEL?.toLowerCase();
+  return c === "chrome" || c === "msedge" || c === "chromium" ? c : undefined;
+}
+
 const DEFAULT_FACTORY: Factory = (provider, visible) =>
   new SocialConnector(provider, {
     userDataDir: profileDir(provider),
     headless: visible ? false : true,
+    channel: browserChannel(),
     verbose: false,
   });
 
@@ -56,7 +69,23 @@ export class ConnectorManager {
   /** Returns the live connector for a provider, creating a hidden one lazily. */
   async get(p: ProviderId): Promise<SocialConnector> {
     const s = this.slot(p);
-    if (!s.connector) s.connector = this.factory(p, false);
+    if (!s.connector) { s.connector = this.factory(p, false); s.visible = false; }
+    s.lastUsed = Date.now();
+    return s.connector;
+  }
+
+  /**
+   * Returns a VISIBLE connector for a user-facing action (e.g. posting), so the
+   * user can watch the browser do it. Reuses an existing visible connector;
+   * otherwise closes any hidden one (frees the profile lock) and opens a
+   * visible one on the same profile.
+   */
+  async getVisible(p: ProviderId): Promise<SocialConnector> {
+    const s = this.slot(p);
+    if (s.connector && s.visible) { s.lastUsed = Date.now(); return s.connector; }
+    await this.closeConnector(p);
+    s.connector = this.factory(p, true);
+    s.visible = true;
     s.lastUsed = Date.now();
     return s.connector;
   }
@@ -65,6 +94,7 @@ export class ConnectorManager {
   set(p: ProviderId, c: SocialConnector): void {
     const s = this.slot(p);
     s.connector = c;
+    s.visible = true;
     s.lastUsed = Date.now();
   }
 
@@ -84,6 +114,22 @@ export class ConnectorManager {
   hasSession(p: ProviderId): boolean {
     const s = this.slots.get(p);
     return (s?.connector ?? this.factory(p, false)).hasSession();
+  }
+
+  /**
+   * Closes and drops the live connector for a provider WITHOUT deleting the
+   * saved profile. Releases the on-disk profile lock so a fresh browser can be
+   * launched on the same profile (e.g. a visible login right after a hidden
+   * verify left a browser open). No-op if no connector is open.
+   */
+  async closeConnector(p: ProviderId): Promise<void> {
+    const s = this.slots.get(p);
+    if (s?.connector) {
+      const c = s.connector;
+      s.connector = null;
+      s.visible = false;
+      await c.close().catch(() => {});
+    }
   }
 
   /** Logs out a provider: closes its connector and deletes the saved profile. */
