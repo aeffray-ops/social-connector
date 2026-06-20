@@ -1,7 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, extname } from "node:path";
+import { randomBytes } from "node:crypto";
 import { rm } from "node:fs/promises";
 import type { ProviderId } from "social-connector";
 import type { ConnectorManager } from "../ConnectorManager.js";
@@ -9,7 +10,15 @@ import { runs } from "../runs.js";
 
 const ALL: ProviderId[] = ["facebook", "whatsapp", "linkedin"];
 // Up to 3 attachments (1 video OR up to 3 images), saved to a temp dir.
-const upload = multer({ dest: join(tmpdir(), "relay-uploads"), limits: { files: 3, fileSize: 512 * 1024 * 1024 } });
+// IMPORTANT: keep the original file extension. Playwright infers the MIME type
+// from the file's extension when attaching it; an extension-less temp file
+// uploads as application/octet-stream and the platforms (FB/LinkedIn/WhatsApp)
+// reject it client-side → no preview appears and the send fails silently.
+const storage = multer.diskStorage({
+  destination: join(tmpdir(), "relay-uploads"),
+  filename: (_req, file, cb) => cb(null, `${randomBytes(16).toString("hex")}${extname(file.originalname)}`),
+});
+const upload = multer({ storage, limits: { files: 3, fileSize: 512 * 1024 * 1024 } });
 
 export function broadcastRouter(manager: ConnectorManager): Router {
   const r = Router();
