@@ -6,6 +6,12 @@ import { runs } from "../runs.js";
 const ALL: ProviderId[] = ["facebook", "whatsapp", "linkedin"];
 const LABEL: Record<ProviderId, string> = { facebook: "Facebook", whatsapp: "WhatsApp", linkedin: "LinkedIn" };
 
+/** True when an error means the Playwright browser/page is already gone. */
+function isBrowserClosed(e: unknown): boolean {
+  const msg = (e as Error)?.message ?? "";
+  return /has been closed|Target (page|closed)|browser has been closed|Target page, context or browser/i.test(msg);
+}
+
 export function providersRouter(manager: ConnectorManager): Router {
   const r = Router();
 
@@ -26,8 +32,18 @@ export function providersRouter(manager: ConnectorManager): Router {
     if (!ALL.includes(provider)) return res.status(400).json({ error: "unknown provider" });
     try {
       const loggedIn = await manager.run(provider, async () => {
-        const c = await manager.get(provider);
-        return c.isLoggedIn();
+        try {
+          const c = await manager.get(provider);
+          return await c.isLoggedIn();
+        } catch (e) {
+          // The reused connector may be a now-dead browser — e.g. the visible
+          // login window the user closed after connecting. Drop it and retry
+          // once on a fresh hidden browser instead of failing the check.
+          if (!isBrowserClosed(e)) throw e;
+          await manager.closeConnector(provider);
+          const c = await manager.get(provider);
+          return await c.isLoggedIn();
+        }
       });
       res.json({ id: provider, loggedIn });
     } catch (e) {

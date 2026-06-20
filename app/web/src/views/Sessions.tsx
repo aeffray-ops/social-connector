@@ -54,7 +54,11 @@ export function Connections({ providers, refresh, verify, checking }: Props) {
         }
         if (e.type === "done") {
           setLoginState(null);
-          refresh();
+          // Authoritative re-check: refresh() deliberately keeps the previous
+          // loggedIn flag for known providers (it trusts /verify, not the
+          // optimistic /providers), so calling it here would leave the badge
+          // stuck on its pre-login "Disconnected". verify() flips it correctly.
+          verify();
           toast(`${provider.label} connected`, "success");
         }
         if (e.type === "error") {
@@ -74,7 +78,8 @@ export function Connections({ providers, refresh, verify, checking }: Props) {
     setDisconnecting(provider.id);
     try {
       await logout(provider.id);
-      await refresh();
+      // verify(), not refresh(): refresh keeps the stale "Connected" flag.
+      await verify();
       toast(`${provider.label} disconnected`, "info");
     } catch (err) {
       toast((err as Error).message, "error");
