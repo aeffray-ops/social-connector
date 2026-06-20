@@ -1,4 +1,5 @@
-import { collectPosts, firstVisible, requireVisible, waitGone } from "../dom.js";
+import type { Locator } from "playwright";
+import { collectPosts, firstVisible, requireVisible, typeIntoEditor, waitGone } from "../dom.js";
 import { PostFailedError } from "../errors.js";
 import type { SocialProvider } from "../types.js";
 
@@ -29,10 +30,20 @@ const COMPOSER_TRIGGER = [
   'text="Start a post"',
 ];
 
+// The editable area of the post modal. Tolerant to language and to LinkedIn's
+// editor revisions (legacy Quill `.ql-editor` AND the newer contenteditable
+// textbox). Dialog-scoped selectors come first (safest); page-wide fallbacks
+// only kick in if the composer is no longer wrapped in role="dialog".
 const COMPOSER_INPUT = [
   'div[role="dialog"] div[role="textbox"][contenteditable="true"]',
-  "div[role=\"dialog\"] .ql-editor[contenteditable=\"true\"]",
+  'div[role="dialog"] .ql-editor[contenteditable="true"]',
+  'div[role="dialog"] [contenteditable="true"][aria-label*="Texte" i]',
+  'div[role="dialog"] [contenteditable="true"][aria-multiline="true"]',
+  'div[role="dialog"] [contenteditable="true"]',
+  '.share-creation-state__text-editor [contenteditable="true"]',
+  '.editor-content [contenteditable="true"]',
   'div.ql-editor[contenteditable="true"]',
+  'div[contenteditable="true"][role="textbox"]',
 ];
 
 const PUBLISH_BUTTON = [
@@ -81,14 +92,30 @@ export const linkedin: SocialProvider = {
     await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded" });
 
     log.step("Opening the composer (Start a post)...");
-    const trigger = await requireVisible(page, COMPOSER_TRIGGER, "LinkedIn composer", 12000);
-    await trigger.click();
-    const input = await requireVisible(page, COMPOSER_INPUT, "LinkedIn editor", 10000);
+    // The first click on the feed's "Start a post" box sometimes only focuses
+    // it without opening the modal, so the editor never appears. Open with one
+    // retry (Escape + re-click) before surfacing a SelectorError.
+    let input: Locator | null = null;
+    for (let attempt = 1; attempt <= 2 && !input; attempt++) {
+      const trigger = await requireVisible(page, COMPOSER_TRIGGER, "LinkedIn composer", 12000);
+      await trigger.click().catch(() => {});
+      input = await firstVisible(page, COMPOSER_INPUT, 12000);
+      if (!input && attempt < 2) {
+        log.step("Composer did not open — retrying...");
+        await page.keyboard.press("Escape").catch(() => {});
+        await page.waitForTimeout(800);
+      }
+    }
+    if (!input) {
+      // No editor after the retry: raise the standard SelectorError listing the
+      // tried selectors so we know exactly what to patch next time.
+      input = await requireVisible(page, COMPOSER_INPUT, "LinkedIn editor", 8000);
+    }
 
-    log.step("Typing the text...");
-    await input.click();
-    if (content) await input.type(content, { delay: 15 });
-
+    // Attach media BEFORE typing. LinkedIn's media flow opens a full-screen
+    // image editor and, after "Suivant"/"Next", returns to the post composer
+    // with a FRESH editor — so text typed beforehand was lost (image posted
+    // without the caption). Upload, return to the composer, THEN type.
     if (options.media?.length) {
       log.step(`Attaching ${options.media.length} file(s)...`);
       const mediaBtn = await firstVisible(
@@ -115,7 +142,12 @@ export const linkedin: SocialProvider = {
         await next.click().catch(() => {});
         await page.waitForTimeout(2000);
       }
+      // Back on the post composer — re-locate the (fresh) text editor.
+      input = await requireVisible(page, COMPOSER_INPUT, "LinkedIn editor", 10000);
     }
+
+    log.step("Typing the text...");
+    await typeIntoEditor(page, input, content);
 
     if (options.screenshotPath) {
       await page.screenshot({ path: options.screenshotPath }).catch(() => {});

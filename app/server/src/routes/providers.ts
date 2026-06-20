@@ -2,15 +2,10 @@ import { Router } from "express";
 import type { ProviderId } from "social-connector";
 import type { ConnectorManager } from "../ConnectorManager.js";
 import { runs } from "../runs.js";
+import { isBrowserClosed } from "../browserClosed.js";
 
 const ALL: ProviderId[] = ["facebook", "whatsapp", "linkedin"];
 const LABEL: Record<ProviderId, string> = { facebook: "Facebook", whatsapp: "WhatsApp", linkedin: "LinkedIn" };
-
-/** True when an error means the Playwright browser/page is already gone. */
-function isBrowserClosed(e: unknown): boolean {
-  const msg = (e as Error)?.message ?? "";
-  return /has been closed|Target (page|closed)|browser has been closed|Target page, context or browser/i.test(msg);
-}
 
 export function providersRouter(manager: ConnectorManager): Router {
   const r = Router();

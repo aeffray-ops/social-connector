@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { ProviderId } from "social-connector";
 import type { ConnectorManager } from "../ConnectorManager.js";
+import { isBrowserClosed } from "../browserClosed.js";
 
 /** Parses a query param to a positive integer, falling back on missing/NaN. */
 function intParam(v: unknown, fallback: number): number {
@@ -10,8 +11,22 @@ function intParam(v: unknown, fallback: number): number {
 
 export function readRouter(manager: ConnectorManager): Router {
   const r = Router();
-  const wa = <T>(fn: (c: any) => Promise<T>) =>
-    manager.run("whatsapp", async () => fn(await manager.get("whatsapp")));
+  /**
+   * Runs `fn` with the provider's connector; if the reused (hidden) browser is
+   * already gone, drops it and retries once on a fresh one instead of failing
+   * the read with "Target page, context or browser has been closed".
+   */
+  const withConnector = <T>(p: ProviderId, fn: (c: any) => Promise<T>) =>
+    manager.run(p, async () => {
+      try {
+        return await fn(await manager.get(p));
+      } catch (e) {
+        if (!isBrowserClosed(e)) throw e;
+        await manager.closeConnector(p);
+        return fn(await manager.get(p));
+      }
+    });
+  const wa = <T>(fn: (c: any) => Promise<T>) => withConnector("whatsapp", fn);
 
   r.get("/groups", async (_req, res) => {
     try { res.json(await wa((c) => c.listGroups({ limit: 0 }))); }
@@ -48,8 +63,8 @@ export function readRouter(manager: ConnectorManager): Router {
       return res.status(400).json({ error: "unknown provider" });
     }
     try {
-      res.json(await manager.run(provider as ProviderId, async () =>
-        (await manager.get(provider as ProviderId)).read({ limit: intParam(req.query.limit, 10) }),
+      res.json(await withConnector(provider as ProviderId, (c) =>
+        c.read({ limit: intParam(req.query.limit, 10) }),
       ));
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
   });

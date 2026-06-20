@@ -9,6 +9,31 @@ import type { Post } from "./types.js";
  * variations of Facebook (see selectors.ts).
  */
 
+/**
+ * Types `content` into a contenteditable post editor and verifies it landed.
+ * Some editors (LinkedIn Quill, Facebook composer) swallow the very first
+ * keystrokes right after a focus/re-render — so we read the editor back and
+ * retry once via the keyboard if the text did not register. No-op for empty
+ * content.
+ */
+export async function typeIntoEditor(
+  page: Page,
+  editor: Locator,
+  content: string,
+): Promise<void> {
+  if (!content) return;
+  await editor.click().catch(() => {});
+  await editor.type(content, { delay: 15 });
+
+  const probe = content.replace(/\s+/g, " ").trim().slice(0, 8);
+  const got = (await editor.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+  if (probe && !got.includes(probe)) {
+    // First attempt did not take — refocus and retype with the keyboard.
+    await editor.click().catch(() => {});
+    await page.keyboard.type(content, { delay: 20 });
+  }
+}
+
 /** Returns the first visible locator among the candidates, or null. */
 export async function firstVisible(
   page: Page,
