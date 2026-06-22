@@ -94,6 +94,8 @@ export interface RunAiOptions {
   confirm?: (question: string) => Promise<boolean>;
   /** Where agent text + status lines go. Default: console.log. */
   output?: (line: string) => void;
+  /** Token usage reporter, called after each LLM round (for a consumption meter). */
+  onUsage?: (u: { model: string; inputTokens: number; outputTokens: number }) => void;
 }
 
 async function defaultConfirm(question: string): Promise<boolean> {
@@ -192,6 +194,7 @@ async function execTool(
 async function runAnthropic(opts: Required<Pick<RunAiOptions, "connector" | "instruction" | "autoSend">> & {
   confirm: (q: string) => Promise<boolean>;
   output: (line: string) => void;
+  onUsage?: RunAiOptions["onUsage"];
 }): Promise<void> {
   const client = new Anthropic(); // reads ANTHROPIC_API_KEY
   const tools: Anthropic.Tool[] = TOOL_DEFS.map((t) => ({
@@ -212,6 +215,14 @@ async function runAnthropic(opts: Required<Pick<RunAiOptions, "connector" | "ins
       tools,
       messages,
     });
+
+    if (res.usage) {
+      opts.onUsage?.({
+        model: ANTHROPIC_MODEL,
+        inputTokens: res.usage.input_tokens ?? 0,
+        outputTokens: res.usage.output_tokens ?? 0,
+      });
+    }
 
     if (res.stop_reason !== "tool_use") {
       const text = res.content
@@ -257,6 +268,7 @@ async function runAnthropic(opts: Required<Pick<RunAiOptions, "connector" | "ins
 async function runOpenAI(opts: Required<Pick<RunAiOptions, "connector" | "instruction" | "autoSend">> & {
   confirm: (q: string) => Promise<boolean>;
   output: (line: string) => void;
+  onUsage?: RunAiOptions["onUsage"];
 }): Promise<void> {
   const client = new OpenAI(); // reads OPENAI_API_KEY
   const model = process.env.OPENAI_MODEL ?? OPENAI_MODEL_DEFAULT;
@@ -280,6 +292,13 @@ async function runOpenAI(opts: Required<Pick<RunAiOptions, "connector" | "instru
       tools,
       tool_choice: "auto",
     });
+    if (res.usage) {
+      opts.onUsage?.({
+        model,
+        inputTokens: res.usage.prompt_tokens ?? 0,
+        outputTokens: res.usage.completion_tokens ?? 0,
+      });
+    }
     const msg = res.choices[0]?.message;
     if (!msg) return;
     messages.push(msg);
@@ -321,6 +340,7 @@ export async function runAi(opts: RunAiOptions): Promise<void> {
     autoSend: opts.autoSend ?? false,
     confirm: opts.confirm ?? defaultConfirm,
     output,
+    onUsage: opts.onUsage,
   };
   if (provider === "anthropic") await runAnthropic(shared);
   else await runOpenAI(shared);

@@ -1,6 +1,6 @@
 import { Provider } from "../api.js";
 
-type View = "broadcast" | "inbox" | "assistant" | "connections" | "settings";
+type View = "studio" | "planning" | "broadcast" | "inbox" | "assistant" | "connections" | "settings";
 
 interface Props {
   activeView: View;
@@ -9,6 +9,27 @@ interface Props {
 }
 
 const NAV_ITEMS: Array<{ id: View; label: string; icon: JSX.Element }> = [
+  {
+    id: "studio",
+    label: "Studio",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9.5 2 12 7l5 .7-3.6 3.5.9 5L9.5 13.8 5.2 16.2l.9-5L2.5 7.7 7.5 7z" />
+        <path d="m17 14 1.2 2.6L21 17l-2 2 .5 2.8L17 20.4 14.5 21.8 15 19l-2-2 2.8-.4z" />
+      </svg>
+    ),
+  },
+  {
+    id: "planning",
+    label: "Planning",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
+        <path d="m9 16 2 2 4-4" />
+      </svg>
+    ),
+  },
   {
     id: "broadcast",
     label: "Broadcast",

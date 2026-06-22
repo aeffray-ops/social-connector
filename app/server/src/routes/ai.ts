@@ -3,6 +3,7 @@ import { runAi } from "social-connector";
 import { randomUUID } from "node:crypto";
 import type { ConnectorManager } from "../ConnectorManager.js";
 import { runs } from "../runs.js";
+import { recordUsage } from "../usageStore.js";
 
 export function aiRouter(manager: ConnectorManager): Router {
   const r = Router();
@@ -20,6 +21,7 @@ export function aiRouter(manager: ConnectorManager): Router {
           connector,
           instruction,
           output: (line) => runs.emit(runId, { type: "message", data: { text: line } }),
+          onUsage: (u) => void recordUsage(u.model, u.inputTokens, u.outputTokens),
           confirm: async (question) => {
             const confirmId = randomUUID();
             runs.emit(runId, { type: "confirm_request", data: { confirmId, question } });
