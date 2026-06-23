@@ -19,11 +19,11 @@ const PRICE: Record<string, { in: number; out: number }> = {
   "claude-sonnet-4-6": { in: 3, out: 15 },
   "claude-opus-4-8": { in: 15, out: 75 },
   "gpt-4o": { in: 2.5, out: 10 },
-  // Génération Gemini : offre gratuite (modèles Flash) → coût nul, on suit juste les tokens.
-  "gemini-2.5-flash": { in: 0, out: 0 },
-  "gemini-2.5-pro": { in: 0, out: 0 },
+  // Génération Gemini (prépayé) — tarifs officiels 2026.
+  "gemini-2.5-flash": { in: 0.3, out: 2.5 },
+  "gemini-2.5-pro": { in: 1.25, out: 10 },
 };
-const PRICE_DEFAULT = { in: 0, out: 0 };
+const PRICE_DEFAULT = { in: 0.3, out: 2.5 };
 
 function costOf(byModel: UsageByModel): number {
   let c = 0;
@@ -76,8 +76,8 @@ function ConsumptionBadge() {
   const totalTok = tokensOf(hub) + tokensOf(relay);
 
   const tip =
-    `Consommation IA\n` +
-    `• Génération (Gemini, offre gratuite) : ${fmtTok(tokensOf(hub))} tokens\n` +
+    `Consommation IA (estimation $)\n` +
+    `• Génération (Gemini, prépayé) : ${fmtCost(hubCost)} — ${fmtTok(tokensOf(hub))} tokens\n` +
     `• Assistant (Anthropic) : ${fmtCost(relayCost)} — ${fmtTok(tokensOf(relay))} tokens`;
 
   return (
@@ -100,7 +100,7 @@ function ConsumptionBadge() {
       <svg width="13" height="13" viewBox="0 0 24 24" fill="#F5B800" stroke="#F5B800" strokeWidth="1.5" strokeLinejoin="round">
         <path d="M13 2 4 14h7l-1 8 9-12h-7z" />
       </svg>
-      <span style={{ fontWeight: 600 }}>{total > 0 ? `≈ ${fmtCost(total)}` : "gratuit"}</span>
+      <span style={{ fontWeight: 600 }}>≈ {fmtCost(total)}</span>
       <span style={{ color: "var(--muted)" }}>· {fmtTok(totalTok)} tok</span>
     </div>
   );
