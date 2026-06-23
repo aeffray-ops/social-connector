@@ -25,10 +25,45 @@ const SCRIPT =
   "C:\\Users\\aurel\\OneDrive\\Documents\\Claude\\Projects\\IDEAL HOME PROJECT\\.claude\\skills\\ideal-render\\ideal_render.py";
 
 const ALLOWED_SIZES = new Set(["1080x1080", "1080x1350", "1536x1024"]);
-const ALLOWED_PRESETS = new Set([
-  "ideal", "scandinave", "contemporain", "luxe", "industriel",
-  "haussmannien", "bord-de-bassin", "minimaliste", "none",
-]);
+
+// Styles lus DYNAMIQUEMENT depuis le script (restent valides quand le skill est
+// mis à jour : un nouveau preset apparaît tout seul). Petit cache mémoire 60 s.
+let presetsCache: { at: number; list: string[] } | null = null;
+
+function runListPresets(): Promise<string[]> {
+  return new Promise((resolveList) => {
+    const proc = spawn(PY, [SCRIPT, "--list-presets"], { cwd: dirname(SCRIPT) });
+    let out = "";
+    const timer = setTimeout(() => {
+      proc.kill();
+      resolveList([]);
+    }, 20_000);
+    proc.stdout.on("data", (d) => {
+      out += d.toString();
+    });
+    proc.on("error", () => {
+      clearTimeout(timer);
+      resolveList([]);
+    });
+    proc.on("close", () => {
+      clearTimeout(timer);
+      // Lignes du type «   • ideal » → on extrait le nom après la puce.
+      const list = out
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .map((l) => l.match(/^[•\-*]\s*(.+)$/)?.[1]?.trim() ?? "")
+        .filter(Boolean);
+      resolveList(list);
+    });
+  });
+}
+
+async function listPresets(): Promise<string[]> {
+  if (presetsCache && Date.now() - presetsCache.at < 60_000) return presetsCache.list;
+  const list = await runListPresets();
+  if (list.length) presetsCache = { at: Date.now(), list };
+  return list;
+}
 
 export function renderRouter(): Router {
   const r = Router();
@@ -37,7 +72,10 @@ export function renderRouter(): Router {
   r.post("/generate-image", async (req, res) => {
     const prompt = String(req.body?.prompt ?? "").trim();
     if (!prompt) return res.status(400).json({ error: "Décris le visuel à générer (prompt vide)." });
-    const preset = ALLOWED_PRESETS.has(String(req.body?.preset)) ? String(req.body.preset) : "ideal";
+    // Valide le style contre la liste réelle du script (fallback : ideal).
+    const known = await listPresets();
+    const reqPreset = String(req.body?.preset ?? "");
+    const preset = reqPreset === "none" || known.includes(reqPreset) ? reqPreset : "ideal";
     const size = ALLOWED_SIZES.has(String(req.body?.size)) ? String(req.body.size) : "1080x1080";
 
     let outDir: string | null = null;
@@ -74,6 +112,11 @@ export function renderRouter(): Router {
     } finally {
       if (outDir) await rm(outDir, { recursive: true, force: true }).catch(() => {});
     }
+  });
+
+  // GET /api/render-presets -> { presets: string[] } (styles du skill, à jour).
+  r.get("/render-presets", async (_req, res) => {
+    res.json({ presets: await listPresets() });
   });
 
   return r;

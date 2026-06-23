@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { generateImage } from "../api.js";
+import { generateImage, getRenderPresets } from "../api.js";
 import { Button } from "./Button.js";
 import { Spinner } from "./Spinner.js";
 
@@ -38,6 +38,8 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
   const [genOpen, setGenOpen] = useState(false);
   const [genPrompt, setGenPrompt] = useState("");
   const [genSize, setGenSize] = useState(FORMATS[0].size);
+  const [genPreset, setGenPreset] = useState("ideal");
+  const [genPresets, setGenPresets] = useState<string[]>([]);
   const [genBusy, setGenBusy] = useState(false);
   const [genErr, setGenErr] = useState<string | null>(null);
   const [zoom, setZoom] = useState<MediaItem | null>(null);
@@ -73,6 +75,14 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
     setGenErr(null);
     setGenPrompt(suggestedPrompt?.trim() ?? "");
     setGenOpen(true);
+    // Charge la liste des styles depuis le moteur (une fois), pour rester à jour.
+    if (genPresets.length === 0) {
+      getRenderPresets()
+        .then((list) => {
+          if (list.length) setGenPresets(list);
+        })
+        .catch(() => {});
+    }
   }
 
   async function runGenerate() {
@@ -81,7 +91,7 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
     setGenBusy(true);
     setGenErr(null);
     try {
-      const blob = await generateImage(prompt, "ideal", genSize);
+      const blob = await generateImage(prompt, genPreset, genSize);
       const file = new File([blob], `ideal-render-${media.length + 1}.jpg`, {
         type: blob.type || "image/jpeg",
       });
@@ -260,6 +270,21 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
               onChange={(e) => setGenPrompt(e.target.value)}
               placeholder="Ex. séjour lumineux ouvert sur une terrasse, maison rénovée…"
             />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div className="input-label" style={{ marginBottom: 6 }}>Style</div>
+            <select
+              className="input"
+              value={genPreset}
+              onChange={(e) => setGenPreset(e.target.value)}
+              style={{ maxWidth: 280 }}
+            >
+              {(genPresets.length ? genPresets : ["ideal"]).map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
           </div>
           <div style={{ marginBottom: 14 }}>
             <div className="input-label" style={{ marginBottom: 6 }}>Format</div>

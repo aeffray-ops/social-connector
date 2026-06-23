@@ -342,3 +342,8 @@ export async function generateImage(
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
   return r.blob();
 }
+
+/** GET /api/render-presets — styles du moteur ideal-render (lus à la volée, à jour). */
+export async function getRenderPresets(): Promise<string[]> {
+  return getJSON<{ presets: string[] }>("/api/render-presets").then((d) => d.presets ?? []);
+}
