@@ -12,7 +12,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { tmpdir, homedir } from "node:os";
-import { join, extname } from "node:path";
+import { join, extname, resolve as pathResolve, sep } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { rm, mkdir, copyFile } from "node:fs/promises";
 import type { ProviderId } from "social-connector";
@@ -21,7 +21,7 @@ import { runs } from "../runs.js";
 import { publishToProviders } from "../publish.js";
 import { publishScheduledPost } from "../scheduler.js";
 import { hubBaseUrl } from "../hub.js";
-import { addScheduled, listScheduled, removeScheduled } from "../scheduleStore.js";
+import { addScheduled, listScheduled, removeScheduled, updateScheduled, type ScheduledPost } from "../scheduleStore.js";
 
 const ALL: ProviderId[] = ["facebook", "whatsapp", "linkedin"];
 
@@ -40,7 +40,7 @@ const storage = multer.diskStorage({
   destination: join(tmpdir(), "relay-uploads"),
   filename: (_req, file, cb) => cb(null, `${randomBytes(16).toString("hex")}${extname(file.originalname)}`),
 });
-const upload = multer({ storage, limits: { files: 3, fileSize: 512 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { files: 6, fileSize: 512 * 1024 * 1024 } });
 
 /** Persistent media root for scheduled posts (same home dir as settings/store). */
 const DATA_DIR = process.env.RELAY_DATA_DIR ?? join(homedir(), ".relay");
@@ -134,7 +134,7 @@ export function contentRouter(manager: ConnectorManager): Router {
   }
 
   // ───────── Immediate publish ─────────
-  r.post("/content/:id/publish", upload.array("media", 3), async (req, res) => {
+  r.post("/content/:id/publish", upload.array("media", 6), async (req, res) => {
     const id = String(req.params.id ?? "");
     const providers = parseJsonField<ProviderId[]>(req.body?.providers, []);
     const whatsapp = parseJsonField<{ to?: string; chat?: string } | undefined>(req.body?.whatsapp, undefined);
@@ -172,7 +172,7 @@ export function contentRouter(manager: ConnectorManager): Router {
   });
 
   // ───────── Schedule for later ─────────
-  r.post("/content/:id/schedule", upload.array("media", 3), async (req, res) => {
+  r.post("/content/:id/schedule", upload.array("media", 6), async (req, res) => {
     const id = String(req.params.id ?? "");
     const publishAt = String(req.body?.publishAt ?? "");
     const providers = parseJsonField<ProviderId[]>(req.body?.providers, []);
@@ -237,6 +237,85 @@ export function contentRouter(manager: ConnectorManager): Router {
   // ───────── Queue management ─────────
   r.get("/schedule", async (_req, res) => {
     res.json(await listScheduled());
+  });
+
+  // ───────── Edit a scheduled post (text / time / providers / media) ─────────
+  // Multipart : publishAt, message, providers (JSON), whatsapp (JSON),
+  // removeMedia (JSON = chemins persistants à retirer), + nouveaux fichiers `media`.
+  // Tous les champs sont optionnels (patch partiel). Le scheduler relit la file
+  // à chaque tick → les changements sont pris en compte sans action supplémentaire.
+  r.patch("/schedule/:id", upload.array("media", 6), async (req, res) => {
+    const sid = String(req.params.id ?? "");
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    const tempPaths = files.map((f) => f.path);
+    const cleanupTemp = () => Promise.all(tempPaths.map((p) => rm(p, { force: true }).catch(() => {})));
+
+    const existing = (await listScheduled()).find((p) => p.id === sid);
+    if (!existing) {
+      void cleanupTemp();
+      return res.status(404).json({ error: "Programmation introuvable" });
+    }
+
+    const patch: Partial<ScheduledPost> = {};
+
+    if (req.body?.publishAt != null && String(req.body.publishAt) !== "") {
+      const publishAt = String(req.body.publishAt);
+      if (Number.isNaN(Date.parse(publishAt))) {
+        void cleanupTemp();
+        return res.status(400).json({ error: "publishAt ISO invalide" });
+      }
+      patch.publishAt = publishAt;
+    }
+    if (req.body?.providers != null) {
+      const providers = parseJsonField<ProviderId[]>(req.body.providers, []).filter((p) => ALL.includes(p));
+      if (providers.length === 0) {
+        void cleanupTemp();
+        return res.status(400).json({ error: "Au moins un réseau requis" });
+      }
+      patch.providers = providers;
+    }
+    if (req.body?.whatsapp != null) {
+      patch.whatsapp = parseJsonField<{ to?: string; chat?: string } | undefined>(req.body.whatsapp, undefined);
+    }
+    if (req.body?.message != null) {
+      patch.message = String(req.body.message);
+    }
+
+    // Médias : on part des existants, on retire ceux demandés (uniquement s'ils
+    // sont bien dans le dossier persistant du post — garde anti-suppression
+    // arbitraire), puis on copie les nouveaux uploads.
+    const postDir = pathResolve(SCHEDULED_MEDIA_DIR, sid);
+    const insidePostDir = (p: string) => {
+      const r = pathResolve(p);
+      return r === postDir || r.startsWith(postDir + sep);
+    };
+    const removeList = parseJsonField<string[]>(req.body?.removeMedia, []);
+    let media = existing.media.slice();
+    const toRemove = removeList.filter((p) => media.includes(p) && insidePostDir(p));
+    media = media.filter((p) => !toRemove.includes(p));
+    await Promise.all(toRemove.map((p) => rm(p, { force: true }).catch(() => {})));
+
+    if (files.length > 0) {
+      try {
+        await mkdir(postDir, { recursive: true });
+        const added = await Promise.all(
+          files.map(async (f) => {
+            const dest = join(postDir, `${randomBytes(8).toString("hex")}${extname(f.originalname)}`);
+            await copyFile(f.path, dest);
+            return dest;
+          }),
+        );
+        media = media.concat(added);
+      } catch (e) {
+        void cleanupTemp();
+        return res.status(500).json({ error: `Échec copie média : ${(e as Error).message}` });
+      }
+    }
+    void cleanupTemp();
+    patch.media = media;
+
+    await updateScheduled(sid, patch);
+    res.json({ ok: true, id: sid });
   });
 
   // Publish a scheduled post NOW (reuses its persistent media + resolved text,

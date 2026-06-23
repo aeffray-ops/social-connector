@@ -426,7 +426,13 @@ function ContentCard({ content, providers }: CardProps) {
         </div>
       )}
 
-      <MediaPicker media={media} onChange={setMedia} onError={setMediaError} error={mediaError} />
+      <MediaPicker
+        media={media}
+        onChange={setMedia}
+        onError={setMediaError}
+        error={mediaError}
+        suggestedPrompt={content.image_prompt}
+      />
 
       <div className="input-label" style={{ marginBottom: 8 }}>Réseaux</div>
       <ProviderPicker

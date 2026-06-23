@@ -211,6 +211,11 @@ export async function getContents(params: GetContentsParams = {}): Promise<HubCo
   return getJSON<HubContent[]>(`/api/hub/contents${qs ? `?${qs}` : ""}`);
 }
 
+/** GET /api/hub/contents/:id — un contenu précis (pour pré-remplir une édition). */
+export async function getContent(id: number): Promise<HubContent> {
+  return getJSON<HubContent>(`/api/hub/contents/${id}`);
+}
+
 /** PATCH /api/hub/contents/:id -> {ok,id,statut} */
 export async function patchContent(
   id: number,
@@ -258,6 +263,8 @@ export interface ScheduledPost {
   providers: string[];
   whatsapp?: { to?: string; chat?: string };
   media: string[];
+  /** Optional text override stored at schedule time (else the Hub content text). */
+  message?: string;
   createdAt: string;
 }
 
@@ -301,4 +308,37 @@ export async function getRelayUsage(): Promise<{ byModel: UsageByModel; since?: 
 /** GET /api/hub/usage — conso de la génération (Hub Python, clés snake_case). */
 export async function getHubUsage(): Promise<{ by_model: UsageByModel; since?: string }> {
   return getJSON<{ by_model: UsageByModel; since?: string }>("/api/hub/usage");
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Édition d'un post programmé + génération d'image (moteur ideal-render).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * PATCH multipart /api/schedule/:id — modifie un post programmé.
+ * FormData (tous optionnels) : publishAt (ISO), message, providers (JSON),
+ * whatsapp (JSON), removeMedia (JSON = chemins à retirer), + fichiers `media`.
+ */
+export async function updateSchedule(id: string, form: FormData): Promise<{ ok: boolean; id: string }> {
+  const r = await fetch(`/api/schedule/${id}`, { method: "PATCH", body: form });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
+  return r.json();
+}
+
+/**
+ * POST /api/generate-image — génère un visuel via FLUX (gratuit) et le renvoie
+ * en image binaire (Blob), prête à être attachée comme un fichier local.
+ */
+export async function generateImage(
+  prompt: string,
+  preset = "ideal",
+  size = "1080x1080",
+): Promise<Blob> {
+  const r = await fetch("/api/generate-image", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt, preset, size }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
+  return r.blob();
 }

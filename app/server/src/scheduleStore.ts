@@ -26,6 +26,8 @@ export interface ScheduledPost {
   whatsapp?: { to?: string; chat?: string };
   /** Absolute paths to persistent media copies (~/.relay/scheduled-media/<id>/). */
   media: string[];
+  /** Optional text override (else the scheduler reads the Hub content's text). */
+  message?: string;
   createdAt: string;
 }
 

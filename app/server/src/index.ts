@@ -9,6 +9,7 @@ import { readRouter } from "./routes/read.js";
 import { aiRouter } from "./routes/ai.js";
 import { settingsRouter } from "./routes/settings.js";
 import { contentRouter } from "./routes/content.js";
+import { renderRouter } from "./routes/render.js";
 import { loadSettings } from "./settings.js";
 import { startHub, stopHub } from "./hub.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
@@ -39,6 +40,7 @@ export function createApp(manager: ConnectorManager = new ConnectorManager()): e
   app.use("/api", aiRouter(manager));
   app.use("/api", settingsRouter());
   app.use("/api", contentRouter(manager));
+  app.use("/api", renderRouter());
 
   const webDist =
     process.env.RELAY_WEB_DIST ??
