@@ -139,6 +139,11 @@ export function contentRouter(manager: ConnectorManager): Router {
     const providers = parseJsonField<ProviderId[]>(req.body?.providers, []);
     const whatsapp = parseJsonField<{ to?: string; chat?: string } | undefined>(req.body?.whatsapp, undefined);
     const message = req.body?.message ? String(req.body.message) : undefined;
+    // Mode simulation : tout le parcours sauf l'envoi réel (rien n'est publié, statut inchangé).
+    const dryRun =
+      req.body?.dryRun === true ||
+      String(req.body?.dryRun ?? "") === "1" ||
+      String((req.query as Record<string, unknown>)?.dryRun ?? "") === "1";
 
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
     const media = files.map((f) => f.path);
@@ -157,8 +162,12 @@ export function contentRouter(manager: ConnectorManager): Router {
     const runId = runs.create();
     res.json({ runId });
 
-    void publishToProviders({ manager, runId, message: resolved.message, providers: resolved.providers, whatsapp, media })
-      .then(() => { runs.emit(runId, { type: "done", data: {} }); return hubSetStatut(id, "publie"); })
+    void publishToProviders({ manager, runId, message: resolved.message, providers: resolved.providers, whatsapp, media, dryRun })
+      .then(() => {
+        runs.emit(runId, { type: "done", data: { simulated: dryRun } });
+        // En simulation, on ne marque PAS le contenu comme publié.
+        return dryRun ? undefined : hubSetStatut(id, "publie");
+      })
       .finally(() => cleanup());
   });
 

@@ -23,6 +23,8 @@ export interface PublishOptions {
   whatsapp?: { to?: string; chat?: string };
   /** Absolute paths to media files to attach. */
   media: string[];
+  /** Simulation : exécute tout le parcours SAUF l'envoi réel (rien n'est publié). */
+  dryRun?: boolean;
 }
 
 /**
@@ -32,7 +34,7 @@ export interface PublishOptions {
  * thrown). Does not emit "done" and does not clean up media — the caller does.
  */
 export async function publishToProviders(opts: PublishOptions): Promise<void> {
-  const { manager, runId, message, providers, whatsapp, media } = opts;
+  const { manager, runId, message, providers, whatsapp, media, dryRun } = opts;
 
   const jobs = providers.map((p) => {
     runs.emit(runId, { type: "provider_status", data: { provider: p, status: "pending" } });
@@ -42,6 +44,33 @@ export async function publishToProviders(opts: PublishOptions): Promise<void> {
         p === "whatsapp"
           ? { target: whatsapp?.to, chat: whatsapp?.chat, media }
           : { media };
+
+      // SIMULATION : on vérifie que la session est active et on rapporte ce qui
+      // partirait, mais on n'appelle JAMAIS c.post() → rien n'est publié.
+      if (dryRun) {
+        try {
+          const c = await manager.get(p);
+          const loggedIn = await c.isLoggedIn();
+          const n = media.length;
+          runs.emit(runId, {
+            type: "provider_status",
+            data: {
+              provider: p,
+              status: loggedIn ? "simulated" : "error",
+              simulated: true,
+              message: loggedIn
+                ? `Simulé OK — prêt à publier : ${message.length} caractères, ${n} média${n > 1 ? "s" : ""}.`
+                : "Session non connectée — reconnexion nécessaire avant un envoi réel.",
+            },
+          });
+        } catch (e) {
+          runs.emit(runId, {
+            type: "provider_status",
+            data: { provider: p, status: "error", simulated: true, message: (e as Error).message },
+          });
+        }
+        return;
+      }
       // One send attempt on a fresh-or-reused visible browser.
       const attempt = async () => {
         const c = await manager.getVisible(p);
