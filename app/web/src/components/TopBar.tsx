@@ -21,6 +21,7 @@ const PRICE: Record<string, { in: number; out: number }> = {
   "gpt-4o": { in: 2.5, out: 10 },
   // Génération Gemini (prépayé) — tarifs officiels 2026.
   "gemini-2.5-flash": { in: 0.3, out: 2.5 },
+  "gemini-2.5-flash-lite": { in: 0.1, out: 0.4 },
   "gemini-2.5-pro": { in: 1.25, out: 10 },
 };
 const PRICE_DEFAULT = { in: 0.3, out: 2.5 };
