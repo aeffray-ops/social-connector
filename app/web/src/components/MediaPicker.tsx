@@ -40,6 +40,7 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
   const [genSize, setGenSize] = useState(FORMATS[0].size);
   const [genBusy, setGenBusy] = useState(false);
   const [genErr, setGenErr] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<MediaItem | null>(null);
 
   // Revoke object URLs on unmount.
   useEffect(() => () => media.forEach((m) => URL.revokeObjectURL(m.url)), [media]);
@@ -122,9 +123,21 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
             }}
           >
             {m.file.type.startsWith("image/") ? (
-              <img src={m.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <img
+                src={m.url}
+                alt=""
+                onClick={() => setZoom(m)}
+                title="Voir en grand"
+                style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" }}
+              />
             ) : (
-              <video src={m.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} muted />
+              <video
+                src={m.url}
+                onClick={() => setZoom(m)}
+                title="Voir en grand"
+                style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" }}
+                muted
+              />
             )}
             <button
               onClick={() => removeMedia(i)}
@@ -206,6 +219,26 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
             <Button variant="ghost" size="sm" onClick={() => setMenuOpen(false)}>
               Annuler
+            </Button>
+          </div>
+        </ModalShell>
+      )}
+
+      {/* Agrandissement d'un visuel au clic. */}
+      {zoom && (
+        <ModalShell onClose={() => setZoom(null)} maxWidth={960}>
+          {zoom.file.type.startsWith("image/") ? (
+            <img
+              src={zoom.url}
+              alt=""
+              style={{ width: "100%", maxHeight: "78vh", objectFit: "contain", borderRadius: 6, display: "block" }}
+            />
+          ) : (
+            <video src={zoom.url} style={{ width: "100%", maxHeight: "78vh", borderRadius: 6 }} controls autoPlay />
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <Button variant="ghost" size="sm" onClick={() => setZoom(null)}>
+              Fermer
             </Button>
           </div>
         </ModalShell>
