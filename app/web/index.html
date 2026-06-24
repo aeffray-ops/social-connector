@@ -1,8 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr" translate="no">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Empêche la traduction auto (Chrome/Google) de réécrire le DOM : sinon
+         React plante au prochain rendu ("removeChild ... not a child"). -->
+    <meta name="google" content="notranslate" />
     <title>Relay — Unified Communications</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,7 +14,7 @@
       rel="stylesheet"
     />
   </head>
-  <body>
+  <body class="notranslate">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

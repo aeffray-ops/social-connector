@@ -245,7 +245,10 @@ interface CardProps {
 
 function ContentCard({ content, providers }: CardProps) {
   const { toast } = useToast();
-  const [texte, setTexte] = useState(content.texte);
+  // Filets : un payload Hub incomplet (champ absent) ne doit JAMAIS crasher la carte.
+  const variantes = Array.isArray(content.variantes) ? content.variantes : [];
+  const alertes = Array.isArray(content.alertes) ? content.alertes : [];
+  const [texte, setTexte] = useState(content.texte ?? "");
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [waMode, setWaMode] = useState<WaMode>("chat");
@@ -270,7 +273,7 @@ function ContentCard({ content, providers }: CardProps) {
 
   const selectedIds = providers.filter((p) => sel[p.id]).map((p) => p.id);
   const whatsAppSelected = !!sel.whatsapp;
-  const hasAlertes = content.alertes.length > 0;
+  const hasAlertes = alertes.length > 0;
 
   const canAct =
     !busy &&
@@ -367,7 +370,7 @@ function ContentCard({ content, providers }: CardProps) {
         >
           <strong>⚠ Interdits détectés</strong>
           <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-            {content.alertes.map((a, i) => (
+            {alertes.map((a, i) => (
               <li key={i}>{a}</li>
             ))}
           </ul>
@@ -401,11 +404,11 @@ function ContentCard({ content, providers }: CardProps) {
         />
       </div>
 
-      {content.variantes.length > 0 && (
+      {variantes.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <div className="input-label" style={{ marginBottom: 6 }}>Variantes</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {content.variantes.map((v, i) => (
+            {variantes.map((v, i) => (
               <button
                 key={i}
                 className="chip"
@@ -512,7 +515,7 @@ function ContentCard({ content, providers }: CardProps) {
 
       {confirmOpen && (
         <ConfirmModal
-          question={`Ce contenu déclenche des alertes (interdits détectés) :\n\n${content.alertes
+          question={`Ce contenu déclenche des alertes (interdits détectés) :\n\n${alertes
             .map((a) => `• ${a}`)
             .join("\n")}\n\nPublier quand même ?`}
           onDecide={(allow) => {

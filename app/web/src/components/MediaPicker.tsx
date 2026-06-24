@@ -44,8 +44,11 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
   const [genErr, setGenErr] = useState<string | null>(null);
   const [zoom, setZoom] = useState<MediaItem | null>(null);
 
-  // Revoke object URLs on unmount.
-  useEffect(() => () => media.forEach((m) => URL.revokeObjectURL(m.url)), [media]);
+  // Révoque les object-URLs UNIQUEMENT au démontage (via ref pour ne pas révoquer
+  // une URL encore affichée quand `media` change → sinon vignettes cassées).
+  const mediaRef = useRef(media);
+  mediaRef.current = media;
+  useEffect(() => () => mediaRef.current.forEach((m) => URL.revokeObjectURL(m.url)), []);
 
   function addFiles(picked: File[]) {
     onError?.(null);
@@ -92,6 +95,11 @@ export function MediaPicker({ media, onChange, onError, error, suggestedPrompt }
     setGenErr(null);
     try {
       const blob = await generateImage(prompt, genPreset, genSize);
+      // Garde : si le serveur renvoie autre chose qu'une image (cas dégradé), on
+      // lève une erreur propre rattrapée plus bas — jamais d'attachement bancal.
+      if (!blob || blob.size === 0 || (blob.type && !blob.type.startsWith("image/"))) {
+        throw new Error("le moteur n'a pas renvoyé d'image valide (réessaie).");
+      }
       const file = new File([blob], `ideal-render-${media.length + 1}.jpg`, {
         type: blob.type || "image/jpeg",
       });

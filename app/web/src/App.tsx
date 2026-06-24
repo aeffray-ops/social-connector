@@ -3,6 +3,7 @@ import { getJSON, verifyProvider, Provider } from "./api.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { TopBar } from "./components/TopBar.js";
 import { ToastProvider } from "./components/Toast.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Broadcast } from "./views/Broadcast.js";
 import { Studio } from "./views/Studio.js";
 import { Planning } from "./views/Planning.js";
@@ -81,20 +82,22 @@ export function App() {
         <div className="main-area">
           <TopBar title={meta.title} subtitle={meta.subtitle} providers={providers} />
           <div className="content-area">
-            {view === "studio" && <Studio providers={providers} />}
-            {view === "planning" && <Planning providers={providers} />}
-            {view === "broadcast" && <Broadcast providers={providers} />}
-            {view === "inbox" && <Inbox />}
-            {view === "assistant" && <Assistant />}
-            {view === "connections" && (
-              <Connections
-                providers={providers}
-                refresh={refresh}
-                verify={verify}
-                checking={checking}
-              />
-            )}
-            {view === "settings" && <Settings />}
+            <ErrorBoundary label={meta.title} resetKeys={[view]}>
+              {view === "studio" && <Studio providers={providers} />}
+              {view === "planning" && <Planning providers={providers} />}
+              {view === "broadcast" && <Broadcast providers={providers} />}
+              {view === "inbox" && <Inbox />}
+              {view === "assistant" && <Assistant />}
+              {view === "connections" && (
+                <Connections
+                  providers={providers}
+                  refresh={refresh}
+                  verify={verify}
+                  checking={checking}
+                />
+              )}
+              {view === "settings" && <Settings />}
+            </ErrorBoundary>
           </div>
         </div>
       </div>
